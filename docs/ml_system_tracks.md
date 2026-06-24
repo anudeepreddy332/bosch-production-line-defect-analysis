@@ -173,8 +173,8 @@ production/dashboard-adjacent context into one of three buckets:
 
 ## Known code-level issues to fix later (not fixed in this change)
 
-These are implied by the audit above and by the unmerged `feature/production-readiness-audit`
-branch (see report at top of this session's output) — listed for follow-up, not actioned here:
+These are implied by the audit above and by `docs/production_readiness_audit.md` — listed for
+follow-up, not actioned here:
 
 1. `run_batch_simulation.py` / `src/inference/decision_engine.py::metrics_from_labels` compute
    supervised metrics on labeled data inside what's billed as the production/batch-simulation
@@ -209,6 +209,7 @@ None of these are implemented or refactored as part of this change, per explicit
   three-track framing. Not edited in this change (untracked file, not in scope of this task).
 - `docs/reproducible_metrics_report.md` — remains the source of truth for which Track 1 metrics
   are actually reproducible (World A vs World B); unaffected by this change.
-- `docs/production_readiness_audit.md` — exists only on the unmerged branch
-  `feature/production-readiness-audit`, **not on `main`**. It independently identified most of the
-  same Track 3 / dashboard mislabeling issues documented here. Not merged as part of this change.
+- `docs/production_readiness_audit.md` — merged onto `main` alongside this doc (both were
+  consolidated from their respective feature branches in the same documentation-consolidation
+  pass). It independently identified most of the same Track 3 / dashboard mislabeling issues
+  documented here, from a read-only audit of the repo at commit `b96cd0d`.
