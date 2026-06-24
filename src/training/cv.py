@@ -89,3 +89,36 @@ def assign_fold_ids(n_rows: int, splits: list[tuple[np.ndarray, np.ndarray]]) ->
         raise ValueError(f"Fold assignment failed: {missing} rows were never assigned to a validation fold.")
 
     return fold_ids
+
+
+def verify_persisted_fold_assignment(
+    df: pd.DataFrame,
+    persisted_col: str = "cv_fold",
+    target_col: str = "Response",
+    group_col: str = "chunk_id",
+    config: ChunkCVConfig | None = None,
+) -> None:
+    """Guard against the OOF-safe features and the model's own CV split silently diverging.
+
+    build_dataset_g.py/build_dataset_h.py compute their own chunk-aware split to build
+    OOF-safe target-rate features and persist the result as `persisted_col`.
+    train_lightgbm_oof later recomputes a split independently with the same config and
+    implicitly relies on getting the identical partition back. Call this before training
+    to make that assumption explicit and fail fast if it ever stops holding (e.g. a
+    sklearn version change, or a row-order drift between build and train).
+    """
+    if persisted_col not in df.columns:
+        raise ValueError(f"Expected persisted fold column '{persisted_col}' not found in dataframe.")
+
+    splits = make_chunk_aware_splits(df, target_col=target_col, group_col=group_col, config=config)
+    recomputed = assign_fold_ids(len(df), splits=splits)
+    persisted = df[persisted_col].to_numpy()
+
+    if not np.array_equal(persisted, recomputed):
+        mismatches = int((persisted != recomputed).sum())
+        raise ValueError(
+            f"Persisted '{persisted_col}' does not match the chunk-aware fold assignment "
+            f"train_lightgbm_oof would recompute ({mismatches}/{len(df)} rows differ). The "
+            "OOF-safe features in this dataset were built against a different fold partition "
+            "than training will use -- refusing to train on a potentially misaligned dataset."
+        )

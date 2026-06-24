@@ -6,6 +6,7 @@ import pandas as pd
 import joblib
 
 from src.logger import setup_logger
+from src.training.cv import verify_persisted_fold_assignment
 from src.training.modeling import build_model_payload, train_lightgbm_oof
 from src.training.summary import update_training_summary
 
@@ -42,6 +43,7 @@ def main() -> None:
         raise FileNotFoundError("Missing dataset_h.parquet. Run scripts/build_dataset_h.py first.")
 
     df = pd.read_parquet(dataset_path)
+    verify_persisted_fold_assignment(df)
 
     result, fold_models = train_lightgbm_oof(
         df=df,
