@@ -1,15 +1,36 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_POLICY_SUMMARY_PATH = ROOT / "outputs" / "max_recall_system_summary.json"
 
 
 @dataclass(frozen=True)
 class DecisionPolicy:
     threshold_high: float = 0.60
     inspection_budget_pct: float = 5.0
+
+
+def load_policy(summary_path: Path | None = None) -> DecisionPolicy:
+    """Load the production decision policy, shared by Track 1 (offline replay) and
+    Track 3 (production inference) -- this is itself label-free (reads only a
+    threshold/budget recommendation, never Response), so it belongs here rather than
+    duplicated in each track's runner script."""
+    path = summary_path if summary_path is not None else DEFAULT_POLICY_SUMMARY_PATH
+    if not path.exists():
+        return DecisionPolicy(threshold_high=0.60, inspection_budget_pct=5.0)
+    s = json.loads(path.read_text())
+    rec = s.get("final_recommendation", {})
+    return DecisionPolicy(
+        threshold_high=float(rec.get("threshold_high", 0.60)),
+        inspection_budget_pct=float(rec.get("inspection_budget_pct", 5.0)),
+    )
 
 
 def apply_threshold(pred: np.ndarray, threshold: float) -> np.ndarray:

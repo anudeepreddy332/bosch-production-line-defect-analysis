@@ -1,3 +1,16 @@
+"""Track 1 / Offline Evaluation: labeled OOF threshold-and-budget replay.
+
+NOT production inference. This script reads `data/features/meta_dataset.parquet`'s
+`Response` column and the OOF prediction blends, and computes real supervised metrics
+(precision/recall/tp/fp/fn/tn per simulated batch) via `src.inference.decision_engine`'s
+`simulate_batches`/`metrics_from_labels`. That is legitimate, useful Track 1 work --
+a threshold/inspection-budget sweep replayed batch-by-batch over labeled data -- but it
+must never be presented as production/Track-3 behavior, because its input is labeled.
+
+For genuinely label-free Track 3 production batch inference, see
+`scripts/run_production_inference.py`, which consumes the unlabeled dataset_h feature
+contract (`scripts/build_test_dataset_h.py`) instead and never reads `Response`.
+"""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +23,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.inference.decision_engine import DecisionPolicy, simulate_batches
+from src.inference.decision_engine import DecisionPolicy, load_policy, simulate_batches
 
 
 OUT = ROOT / "outputs"
@@ -54,18 +67,6 @@ def load_best_pred() -> pd.DataFrame:
 
     print(f"Using source: {best_name} (proxy MCC@0.74={best_mcc:.4f})")
     return best_df.sort_values("Id").reset_index(drop=True)
-
-
-def load_policy() -> DecisionPolicy:
-    summary_path = OUT / "max_recall_system_summary.json"
-    if not summary_path.exists():
-        return DecisionPolicy(threshold_high=0.60, inspection_budget_pct=5.0)
-    s = json.loads(summary_path.read_text())
-    rec = s.get("final_recommendation", {})
-    return DecisionPolicy(
-        threshold_high=float(rec.get("threshold_high", 0.60)),
-        inspection_budget_pct=float(rec.get("inspection_budget_pct", 5.0)),
-    )
 
 
 def run_full(df: pd.DataFrame, policy: DecisionPolicy, batch_size: int, schedule_frequency_seconds: int) -> None:

@@ -53,6 +53,9 @@ outputs/**/current.parquet
 outputs/**/batch_simulation_state.json
 outputs/**/batch_stream_log.csv
 
+# Track 3 production batch inference artifacts (generated, append-only, per-batch)
+outputs/production/
+
 # Model artifacts
 outputs/models/
 models/*.pkl

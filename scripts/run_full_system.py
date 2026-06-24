@@ -30,7 +30,7 @@ def run_step(name: str, cmd: list[str]) -> bool:
 if __name__ == "__main__":
     steps = [
         ("Build Decision System", [sys.executable, "scripts/build_decision_summary.py"]),
-        ("Run Batch Simulation", [sys.executable, "scripts/run_batch_simulation.py"]),
+        ("Run Offline Batch Eval (Track 1, labeled)", [sys.executable, "scripts/run_offline_batch_eval.py"]),
         ("Run Drift Monitoring", [sys.executable, "scripts/run_drift_monitoring.py"]),
     ]
 
