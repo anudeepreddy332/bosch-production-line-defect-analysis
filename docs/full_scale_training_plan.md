@@ -45,9 +45,12 @@ The full raw CSVs already exist locally at `data/raw/*.csv` (confirmed by `ls -l
 so `--skip-unzip` is appropriate; there is no need to re-extract from a zip archive.
 
 ```bash
-# Full data, no sampling, no truncation. --overwrite is REQUIRED because the currently
-# committed data/processed/*.parquet files are a stale 50k dev sample (see
-# data/processed/PROVENANCE.json: sample_tag="stale-partial-committed-dev-sample") --
+# Full data, no sampling, no truncation. --overwrite is REQUIRED because the local
+# existing data/processed/*.parquet artifacts (untracked/gitignored, confirmed via
+# `git ls-files data/processed/` -- only PROVENANCE.json is tracked there) are a stale
+# 50k dev sample (see data/processed/PROVENANCE.json: sample_tag=
+# "stale-partial-committed-dev-sample" -- that tag name is a historical label baked into
+# the JSON field value, not a claim that the parquet files themselves are git-tracked) --
 # without --overwrite, prepare_data.py will see each parquet already exists and SKIP it,
 # silently leaving the 50k sample in place (convert_csv_to_parquet_incremental's
 # "skipped_existing" path; see its docstring).
@@ -222,7 +225,7 @@ unless force-added.
 | Feature importance: dataset H | `outputs/feature_importance_dataset_h.csv` | untracked | Yes |
 | Feature importance: meta model | `outputs/feature_importance_meta_model.csv` | untracked | Yes |
 
-A git-status diff after this full run will therefore show, at most: **modifications** to the four
+A git-status diff after this full run will therefore show, at most: **modifications** to the six
 already-tracked files (`data/processed/PROVENANCE.json`, `outputs/training_summary.json`, and the
 four `models/*.pkl` — these already exist in the index from the 50k-sample run, so a full-scale
 rerun overwrites them in place rather than adding new paths) and **zero new tracked paths** for
@@ -255,13 +258,19 @@ file shows `"unverified"` (most likely cause: `--overwrite` was omitted and the 
 left in place — see Section 1), `status` will be `"unknown"` and `is_full_data` will be `null`. Do
 not proceed past this check if that happens; rerun Section 1 with `--overwrite`.
 
-**2. Row counts match full Bosch scale (~1,183,747).**
+**2. Row counts match the row count of each file's own source CSV — train and test are NOT
+assumed to be equal.**
 
-The precise number, confirmed consistently across `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md`
-("Total rows: **1,183,747**"), `docs/production_readiness_audit.md`, `data/README.md`, and
-`docs/reproducible_metrics_report.md`, is **1,183,747 rows** for the full Bosch train set (6,879
-positives, 0.5811% failure rate, from the World-B blend file's metadata — train and test are each
-expected to be on this order; Bosch's public train/test split is roughly even). Check directly:
+`docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` ("Total rows: **1,183,747**"),
+`docs/production_readiness_audit.md`, `data/README.md`, and `docs/reproducible_metrics_report.md`
+all cite **1,183,747 rows** for the full Bosch *train* set (6,879 positives, 0.5811% failure rate,
+from the World-B blend file's metadata). Measured directly this session via `wc -l data/raw/*.csv`
+(see Section 6 for the full output), train and test are **close but not identical**: the three
+`train_*.csv` files each have 1,183,748 lines (1,183,747 data rows after the header), while the
+three `test_*.csv` files (plus `sample_submission.csv`) each have 1,183,749 lines (**1,183,748**
+data rows after the header) — test has exactly **one more row than train**, not the same count.
+Do not assume or assert that test row count equals train row count; validate each side against its
+own raw CSV independently. Check directly:
 
 ```bash
 python3 -c "
@@ -440,7 +449,12 @@ estimate is therefore order-of-magnitude reasoning from row-count scaling, not a
 
 ### Disk usage risk
 
-Measured directly on this machine, this session:
+Measured directly on this machine, this session. Row counts via `wc -l data/raw/*.csv`
+(line count includes the header, so subtract 1 for data rows): `train_numeric.csv`,
+`train_date.csv`, `train_categorical.csv` each report 1,183,748 lines (1,183,747 data rows);
+`test_numeric.csv`, `test_date.csv`, `test_categorical.csv`, `sample_submission.csv` each report
+1,183,749 lines (1,183,748 data rows) — confirming test has one more row than train, per the
+Section 5 check 2 note above.
 
 ```
 data/raw                15G   (train_numeric.csv 2.0G, train_date.csv 2.7G, train_categorical.csv 2.5G,
@@ -501,22 +515,25 @@ approval.** Specifically, using the tracked/gitignored inventory from Section 4:
   repo's `.gitignore` was written to exclude.
 - `data/processed/PROVENANCE.json`, `outputs/training_summary.json`, and the four `models/*.pkl`
   files (`models/baseline_model.pkl`, `models/dataset_g_model.pkl`, `models/dataset_h_model.pkl`,
-  `models/meta_model.pkl`) **are already tracked** in git from the 50k-sample run. A full-scale run
-  will **modify these four files plus the provenance JSON in place** — this is a real diff that
-  `git status`/`git diff` will show automatically, with no `git add -f` needed. **This is exactly
-  the diff that needs human review before any commit**: confirm `outputs/training_summary.json`'s
+  `models/meta_model.pkl`) — **six files total** — **are already tracked** in git from the
+  50k-sample run. A full-scale run will **modify these six files in place** — this is a real diff
+  that `git status`/`git diff` will show automatically, with no `git add -f` needed. **This is
+  exactly the diff that needs human review before any commit**: confirm `outputs/training_summary.json`'s
   new OOF MCC values look sane (Section 5, checks 5 and 7) and that the four `.pkl` files actually
   changed `training_rows` to the full-scale count (not still 50,000, which would indicate the run
   silently used stale/cached inputs) before approving the commit.
 - If a full-scale run produces results that look wrong (sanity checks in Section 5 fail, runtime
-  blew up, disk filled up mid-run), the safe rollback is: do not commit. The four currently-tracked
+  blew up, disk filled up mid-run), the safe rollback is: do not commit. The six currently-tracked
   files (`outputs/training_summary.json`, `models/*.pkl` x4, `data/processed/PROVENANCE.json`) are
   unchanged in git's index until an explicit `git add` + commit happens — a failed or rejected run
-  can simply be discarded by leaving the working tree dirty and not committing, or by checking out
-  the previous version of those five tracked files (`git checkout -- <path>`) if a partial write
-  corrupted them on disk. The untracked generated parquet/CSV files can simply be deleted
-  (`rm data/processed/*.parquet data/features/*.parquet outputs/feature_importance_*.csv`) with zero
-  git impact since they were never staged.
+  can simply be discarded by leaving the working tree dirty and not committing. **Any destructive
+  cleanup command — `git checkout -- <path>` to revert a tracked file, or `rm` to delete generated
+  parquet/CSV files (e.g. `rm data/processed/*.parquet data/features/*.parquet
+  outputs/feature_importance_*.csv`) — must be explicitly reviewed and approved by a human before
+  execution.** Neither command should be run automatically as part of "cleaning up" a rejected run;
+  present the specific command and its target paths for approval first. The untracked generated
+  parquet/CSV files carry zero git impact if simply left in place (they were never staged), so
+  deletion is a convenience, not a requirement, and should not be treated as an automatic next step.
 - **Documentation/metrics commits are different from artifact commits.** An updated, human-reviewed
   markdown report (e.g. a new "full-scale results" section added to
   `docs/reproducible_metrics_report.md`, or a new dedicated doc) that *quotes* numbers read out of
