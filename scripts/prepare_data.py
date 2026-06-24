@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import shutil
+import subprocess
 import time
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_ZIP_PATH = Path.home() / "Downloads" / "bosch-production-line-performance.zip"
+PROVENANCE_PATH = PROCESSED_DIR / "PROVENANCE.json"
 
 
 def _memory_gb() -> float:
@@ -84,14 +88,37 @@ def convert_csv_to_parquet_incremental(
     chunksize: int,
     overwrite: bool = False,
     log_every: int = 10,
-) -> None:
+    sample_rows: int | None = None,
+) -> int:
+    """Convert a CSV file to chunked Parquet.
+
+    Returns the number of rows written (or, if skipped because the parquet
+    already exists, the row count read from the existing file's metadata).
+
+    If ``sample_rows`` is None (the default), the FULL CSV is converted —
+    there is no implicit row cap. Passing ``sample_rows`` explicitly caps
+    the output to the first N rows (reading only as many chunks as needed),
+    which is the only way a sampled/truncated parquet can be produced.
+    """
     if parquet_path.exists() and not overwrite:
-        logger.info("Parquet exists, skipping: %s", parquet_path)
-        return
+        existing_rows = pq.ParquetFile(parquet_path).metadata.num_rows
+        logger.warning(
+            "Parquet exists, skipping (kept as-is): %s | existing_rows=%d. "
+            "This file may be a STALE or PARTIAL artifact from a previous run "
+            "(e.g. a dev sample). Pass --overwrite to regenerate it from the "
+            "current CSV with the current --sample-rows setting.",
+            parquet_path,
+            existing_rows,
+        )
+        return existing_rows
 
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Converting CSV -> Parquet (chunked): %s", csv_path)
+    logger.info(
+        "Converting CSV -> Parquet (chunked): %s%s",
+        csv_path,
+        f" | sample_rows={sample_rows} (EXPLICIT SAMPLE, not full data)" if sample_rows is not None else " | full data, no row cap",
+    )
     start_time = time.time()
 
     writer: pq.ParquetWriter | None = None
@@ -102,6 +129,12 @@ def convert_csv_to_parquet_incremental(
         for chunk_count, chunk in enumerate(
             pd.read_csv(csv_path, chunksize=chunksize, low_memory=False), start=1
         ):
+            if sample_rows is not None and total_rows >= sample_rows:
+                break
+
+            if sample_rows is not None and total_rows + len(chunk) > sample_rows:
+                chunk = chunk.iloc[: sample_rows - total_rows]
+
             chunk = optimize_chunk_dtypes(chunk)
             total_rows += len(chunk)
 
@@ -130,6 +163,9 @@ def convert_csv_to_parquet_incremental(
 
             del chunk, table
             gc.collect()
+
+            if sample_rows is not None and total_rows >= sample_rows:
+                break
     finally:
         if writer is not None:
             writer.close()
@@ -145,6 +181,50 @@ def convert_csv_to_parquet_incremental(
         size_mb,
         elapsed,
     )
+    logger.info("Final row count for %s: %d", parquet_path.name, total_rows)
+    return total_rows
+
+
+def _git_sha() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def write_provenance(
+    row_counts: dict[str, int],
+    sample_rows: int | None,
+    sample_tag: str | None,
+) -> None:
+    """Write a small JSON manifest documenting how data/processed/*.parquet
+    was produced, so downstream readers never have to guess whether the
+    committed parquet files are full data or a sample."""
+    manifest = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_sha": _git_sha(),
+        "sample_rows": sample_rows,
+        "sample_tag": sample_tag,
+        "is_full_data": sample_rows is None,
+        "row_counts": row_counts,
+        "note": (
+            "is_full_data=true means every CSV row was processed (no cap). "
+            "is_full_data=false means each file was capped to sample_rows "
+            "rows via the explicit --sample-rows flag in scripts/prepare_data.py."
+        ),
+    }
+    PROVENANCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with PROVENANCE_PATH.open("w") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info("Wrote provenance manifest: %s", PROVENANCE_PATH)
 
 
 def main() -> None:
@@ -153,7 +233,34 @@ def main() -> None:
     parser.add_argument("--chunksize", type=int, default=50_000, help="CSV rows processed per chunk.")
     parser.add_argument("--skip-unzip", action="store_true", help="Skip unzip step and only run CSV->Parquet conversion.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing extracted/parquet files.")
+    parser.add_argument(
+        "--sample-rows",
+        type=int,
+        default=None,
+        help=(
+            "If set, cap EACH processed parquet file to the first N rows "
+            "(deterministic). Default is None, meaning FULL data with NO "
+            "truncation. This is the only way a sampled/dev dataset is produced."
+        ),
+    )
+    parser.add_argument(
+        "--sample-tag",
+        type=str,
+        default=None,
+        help="Free-text label describing sample intent (e.g. 'dev'). Recorded in PROVENANCE.json only; has no effect on processing.",
+    )
     args = parser.parse_args()
+
+    if args.sample_rows is None:
+        logger.info("No --sample-rows given: processing FULL data (no row cap).")
+    else:
+        logger.warning(
+            "--sample-rows=%d set: each processed parquet will be capped to %d rows "
+            "(sample_tag=%s). This is an EXPLICIT sample, not full data.",
+            args.sample_rows,
+            args.sample_rows,
+            args.sample_tag,
+        )
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
@@ -164,15 +271,20 @@ def main() -> None:
     csv_files = iter_csv_files(RAW_DIR)
     logger.info("CSV files discovered: %d", len(csv_files))
 
+    row_counts: dict[str, int] = {}
     for csv_path in csv_files:
         parquet_name = f"{csv_path.stem}.parquet"
         parquet_path = PROCESSED_DIR / parquet_name
-        convert_csv_to_parquet_incremental(
+        rows = convert_csv_to_parquet_incremental(
             csv_path=csv_path,
             parquet_path=parquet_path,
             chunksize=args.chunksize,
             overwrite=args.overwrite,
+            sample_rows=args.sample_rows,
         )
+        row_counts[parquet_name] = rows
+
+    write_provenance(row_counts=row_counts, sample_rows=args.sample_rows, sample_tag=args.sample_tag)
 
     logger.info("Data preparation complete. Processed Parquet directory: %s", PROCESSED_DIR)
 

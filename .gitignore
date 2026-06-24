@@ -26,7 +26,9 @@ venv/
 # 📊 Data (DO NOT PUSH RAW)
 # =========================
 data/raw/
-data/processed/
+# Ignore processed parquet, but TRACK the provenance manifest so data state is self-documenting.
+data/processed/*
+!data/processed/PROVENANCE.json
 data/models/
 data/artifacts/
 
