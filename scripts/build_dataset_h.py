@@ -187,16 +187,18 @@ def main() -> None:
     # test/incoming rows -- see src/features/dataset_h_pipeline.py for why full-train
     # fitting is correct here even though the fold loop above is intentionally
     # fold-restricted for leakage-free OOF predictions.
-    lookup = compute_dataset_h_lookup_artifacts(df[["Response", "path_signature"]])
+    lookup = compute_dataset_h_lookup_artifacts(df[["Id", "Response", "path_signature"]])
     lookup_path = FEATURES_DIR / "dataset_h_lookup.json"
     lookup_path.write_text(json.dumps(lookup, indent=2, sort_keys=True))
     logger.info(
-        "Saved Dataset H train-derived lookup artifacts: %s (signatures=%d stations=%d transitions=%d pairs=%d)",
+        "Saved Dataset H train-derived lookup artifacts: %s (signatures=%d stations=%d transitions=%d pairs=%d "
+        "data_fingerprint=%s)",
         lookup_path,
         len(lookup["path_count_train"]),
         len(lookup["station_rate"]),
         len(lookup["trans_rate"]),
         len(lookup["pair_count_train"]),
+        lookup["data_fingerprint"],
     )
 
 
