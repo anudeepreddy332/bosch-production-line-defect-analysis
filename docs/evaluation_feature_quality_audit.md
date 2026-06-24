@@ -1,18 +1,23 @@
 # Evaluation & Feature-Quality Audit
 
-**Status note (2026-06-24):** the leakage bugs this audit found (`chunk_failure_rate` in
-`dataset_g`, fold-unrestricted `pair_cooccur_*`/`path_count` in `dataset_h`) were fixed in
-`3db7901`, and the fix has since been verified against a fresh 50k dev-sample rerun on
-`feature/dev-sample-refresh-post-methodology-fix`. The OOF MCC numbers quoted throughout this
-document (§3, e.g. `dataset_h`=0.1305, `meta_model`=0.0523) are the **pre-fix** numbers that
-motivated the fix — they are intentionally left unchanged below as the historical record of what
-was found. For the current, post-fix numbers, see `docs/reproducible_metrics_report.md` §1
-(`dataset_h`=0.0973, `meta_model`=0.0319).
+**Status note (2026-06-24): this document is a frozen historical snapshot, not current state.**
+The leakage bugs this audit found (`chunk_failure_rate` in `dataset_g`, fold-unrestricted
+`pair_cooccur_*`/`path_count` in `dataset_h`) were fixed in `3db7901`, and that fix has since been
+verified against a fresh 50k dev-sample rerun on `feature/dev-sample-refresh-post-methodology-fix`
+(merged to `main`). Everything below this note — including the `PROVENANCE.json` snippet in §1,
+every OOF MCC number in §3 (`dataset_h`=0.1305, `meta_model`=0.0523), and all other "evidence"
+quoted throughout — is preserved **exactly as captured at audit time, pre-fix**, as the historical
+record of what was found and why the fix was made. None of it reflects the repository's current
+on-disk state. For the current, post-fix dev-sample numbers and the current `PROVENANCE.json`
+shape, see `docs/reproducible_metrics_report.md` §1 (`dataset_h`=0.0973, `meta_model`=0.0319).
 
-**Scope:** read-only inspection of the currently committed, reproducible artifacts (data, features,
-models, metrics). No training was run to produce this report — every number below is read directly
-from committed parquet/JSON/CSV files or from re-running the existing, already-saved CV split logic
-in `src/training/cv.py` for verification. This document does not change any code.
+**Scope:** read-only inspection of the artifacts as they stood at audit time (data, features,
+models, metrics) — at that time, this included plain JSON/CSV outputs and the `data/processed/`
+parquet files that existed on disk then (parquet files of this kind are gitignored and were never
+git-tracked, including at audit time; only `data/processed/PROVENANCE.json` is tracked). No
+training was run to produce this report — every number below was read directly from those
+on-disk files or from re-running the existing, already-saved CV split logic in `src/training/cv.py`
+for verification. This document does not change any code.
 
 **Why this exists:** before generating Kaggle test features or attempting a real submission (Track 2),
 we need an honest answer to "is the current model and feature set actually good, and is the CV
@@ -23,9 +28,12 @@ claims against the data directly and adds a feature-level leakage audit that had
 
 ---
 
-## 1. Current data scope: dev sample, not full-scale
+## 1. Data scope at audit time: dev sample, not full-scale
 
-**Evidence — `data/processed/PROVENANCE.json`:**
+**Historical evidence, captured at audit time — `data/processed/PROVENANCE.json` as it read
+then** (this is a frozen snapshot quoted for the record; it is **not** the current contents of
+that file — see the status note at the top of this document for the current `sample_tag`/`status`
+fields, which have since changed to `"dev"`/`"sample"` after the refresh):
 ```json
 {
   "sample_rows": 50000,
@@ -46,8 +54,8 @@ claims against the data directly and adds a feature-level leakage audit that had
 | `test_categorical.parquet` | 50,000 | 2,141 | No |
 | `sample_submission.parquet` | 50,000 | 2 (`Id`, `Response`) | placeholder only |
 
-**Conclusion:** the committed data is a **50,000-row dev sample** of the real ~1.18M-row Bosch
-dataset (confirmed `Id` range in `train_numeric` is `4..100147`, a contiguous low-Id slice, not a
+**Conclusion:** the on-disk (local, gitignored, not git-tracked) data at audit time was a
+**50,000-row dev sample** of the real ~1.18M-row Bosch dataset (confirmed `Id` range in `train_numeric` is `4..100147`, a contiguous low-Id slice, not a
 random sample of the full range). Test data correctly has **no** `Response` column — schema-honest
 for "unlabeled." `sample_submission.parquet`'s `Response` column is 100% zero — a Kaggle placeholder
 format, not real labels. **Full-scale data exists** in `data/raw/*.csv` but has not been processed or
@@ -299,8 +307,9 @@ In order:
 ## 10. Explicit statement on full-scale model quality
 
 **Full-scale model quality is UNKNOWN.** Every metric in this report — OOF MCC, fold threshold
-stability, feature importance, the stacking comparison — is computed on the committed 50,000-row
-dev sample (271 positives), not the full ~1.18M-row dataset. No full-scale training run exists in
+stability, feature importance, the stacking comparison — is computed on the (gitignored, not
+git-tracked) 50,000-row dev sample (271 positives) that was on disk at audit time, not the full
+~1.18M-row dataset. No full-scale training run exists in
 this repo's history (`docs/reproducible_metrics_report.md` §2–3 already establishes this; this audit
 does not change that). The widely-quoted "World B" numbers (`README.md`, `docs/CASE_STUDY_BOSCH_
 PRODUCTION_SYSTEM.md`: MCC ~0.30–0.317) are **not validated by this audit and are not assumed valid**

@@ -10,11 +10,14 @@ actually produces.
 
 ## 1. What IS reproducible today: World A (50,000-row dev sample)
 
-The artifacts currently committed under `data/processed/*.parquet` and
-`data/features/*.parquet` (excluding the `*context_meta_v2_blend*` files — see
-World B below) are a **50,000-row slice** of the full Bosch dataset, with **271
-positive (failure) rows**, i.e. a **0.542% failure rate**. This is documented in
-`data/processed/PROVENANCE.json`.
+The local, ignored/generated `data/processed/*.parquet` and `data/features/*.parquet`
+artifacts currently on disk (excluding the `*context_meta_v2_blend*` files — see World
+B below) are a **50,000-row slice** of the full Bosch dataset, with **271 positive
+(failure) rows**, i.e. a **0.542% failure rate**. These parquet files are **not
+tracked in git** — confirmed via `git ls-files data/processed/ data/features/`, which
+returns only `data/processed/PROVENANCE.json` (explicitly un-ignored in `.gitignore`).
+The row-count/scope claim above is documented in that tracked `PROVENANCE.json`, not in
+the parquet files themselves.
 
 This is a **dev/smoke-test sample, NOT a production or Kaggle-scale result**. With
 only ~271 positives total (~54 per CV fold), metrics computed on it are noisy and

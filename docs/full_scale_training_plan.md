@@ -17,18 +17,20 @@ assessment for that step, so that whoever approves and runs it (a separate, expl
 compute step, not something to run opportunistically) does not have to reverse-engineer the script
 dependency graph under time pressure.
 
-**Important pre-existing fact discovered while writing this plan:** the currently committed
-`outputs/training_summary.json` and `models/*.pkl` (tracked in git, dated from commit `a62d631`)
-are **stale relative to the current code on this branch**. `outputs/training_summary.json` still
-lists `chunk_failure_rate` in `dataset_g`'s feature list and records `dataset_h` OOF MCC =
-0.13053326149364966 — the **pre-fix, leak-inflated** number from before `3db7901`, not the
-post-fix 0.0973 reported in `docs/evaluation_feature_quality_audit.md` (which was computed in
-that audit by rerunning the scripts in a scratch location, not by overwriting the committed
-artifacts). This means even the *dev-sample* artifacts on disk right now do not reflect the current
-code. Whoever runs this plan should be aware that a 50k-row dev-sample rerun (Section 3b of
-`docs/reproducible_metrics_report.md`) to refresh `outputs/training_summary.json` and `models/*.pkl`
-against current code is a smaller, useful sanity check that could be done before committing to the
-multi-hour full-scale run described below.
+**Update (2026-06-24): the dev-sample staleness gap below has been closed.** This section
+originally documented that the tracked `outputs/training_summary.json` and `models/*.pkl` (dated
+from commit `a62d631`) were stale relative to the post-`3db7901` code — `dataset_g`'s feature list
+still listed `chunk_failure_rate` and `dataset_h`'s OOF MCC was the pre-fix, leak-inflated
+0.13053326149364966. That gap was closed on `feature/dev-sample-refresh-post-methodology-fix`
+(merged to `main`): the 50k dev-sample pipeline was rerun end-to-end against current code, and the
+tracked `outputs/training_summary.json`, `models/*.pkl`, and `data/processed/PROVENANCE.json` now
+reflect it (`dataset_g`'s feature list no longer contains `chunk_failure_rate`; `dataset_h` OOF MCC
+is now `0.09725962897650973`; `meta_model` OOF MCC is now `0.03189334352773844`). See
+`docs/reproducible_metrics_report.md` §1 for the current source-of-truth dev-sample numbers — do
+not treat the 0.1305/0.0523 figures anywhere in this document as current; they are the historical
+pre-fix values being referenced for comparison only. This full-scale plan's own command sequence
+and risk assessment below were not affected by that refresh (they describe what a full-scale run
+would do, which is unchanged) and remain unexecuted.
 
 ---
 
@@ -47,13 +49,13 @@ so `--skip-unzip` is appropriate; there is no need to re-extract from a zip arch
 ```bash
 # Full data, no sampling, no truncation. --overwrite is REQUIRED because the local
 # existing data/processed/*.parquet artifacts (untracked/gitignored, confirmed via
-# `git ls-files data/processed/` -- only PROVENANCE.json is tracked there) are a stale
-# 50k dev sample (see data/processed/PROVENANCE.json: sample_tag=
-# "stale-partial-committed-dev-sample" -- that tag name is a historical label baked into
-# the JSON field value, not a claim that the parquet files themselves are git-tracked) --
-# without --overwrite, prepare_data.py will see each parquet already exists and SKIP it,
-# silently leaving the 50k sample in place (convert_csv_to_parquet_incremental's
-# "skipped_existing" path; see its docstring).
+# `git ls-files data/processed/` -- only PROVENANCE.json is tracked there) are currently
+# an explicit, current-code 50k dev sample (see data/processed/PROVENANCE.json:
+# sample_tag="dev", status="sample", refreshed on feature/dev-sample-refresh-post-
+# methodology-fix -- it is current relative to today's code, but it is still only
+# 50,000 rows, not full data) -- without --overwrite, prepare_data.py will see each
+# parquet already exists and SKIP it, silently leaving the 50k sample in place
+# (convert_csv_to_parquet_incremental's "skipped_existing" path; see its docstring).
 python scripts/prepare_data.py --skip-unzip --overwrite
 ```
 
@@ -329,9 +331,11 @@ for name, m in s['models'].items():
 Expected: `rows` for `baseline`/`dataset_g`/`dataset_h` reflects the full train row count (not
 50,000), and `rows` for `meta_model` matches it too (meta_dataset is built from the same Ids).
 Sanity-check that `dataset_g`'s `features` list does **not** contain `chunk_failure_rate` (it was
-removed by `3db7901`; its presence would mean stale code or a stale file was used — see this
-document's opening note about the *currently committed* `training_summary.json` still showing it
-from before that fix).
+removed by `3db7901`; its presence in a full-scale run would mean stale code or a stale file was
+used — the currently tracked `training_summary.json` on `main` already passes this check at
+dev-sample scale after the refresh described in this document's opening note, so a full-scale run
+regressing on this specific point would indicate something went wrong in that run, not a
+pre-existing repo issue).
 
 **6. `feature_importance_*.csv` files regenerate for all four models.**
 
@@ -346,10 +350,13 @@ list and has no NaN `importance` values.
 **7. Explicit `dataset_h` vs. `meta_model` comparison.**
 
 This is the highest-value check, since it directly re-decides a finding from
-`docs/evaluation_feature_quality_audit.md`: at 50k-row scale, `dataset_h` (OOF MCC 0.0973 post-fix,
-0.1305 pre-fix/stale-on-disk) beat the 3-model `meta_model` stack (OOF MCC 0.0523), i.e. **stacking
-hurt** — attributed there to too few positives (271 total, ~54/fold) for the meta-learner to find
-real signal in `agreement_count`/`mean_prediction`/etc. beyond noise. At full scale there are ~23.7x
+`docs/reproducible_metrics_report.md` §1 (current source of truth) and
+`docs/evaluation_feature_quality_audit.md` (historical pre-fix diagnosis): at 50k-row scale,
+post-fix, `dataset_h` (OOF MCC 0.0973) beats the 3-model `meta_model` stack (OOF MCC 0.0319) by an
+even wider margin than the pre-fix numbers showed (`dataset_h` 0.1305 vs. `meta_model` 0.0523), i.e.
+**stacking hurt, and post-fix it hurts proportionally more** — attributed in the audit to too few
+positives (271 total, ~54/fold) for the meta-learner to find real signal in
+`agreement_count`/`mean_prediction`/etc. beyond noise. At full scale there are ~23.7x
 more rows and (extrapolating proportionally) on the order of ~6,400 positives, which may be enough
 for the stack to actually add value. Re-run this comparison, don't assume the answer transfers:
 
