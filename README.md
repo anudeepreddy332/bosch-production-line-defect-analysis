@@ -62,8 +62,24 @@ Dashboard + API + Monitoring
 
 ## 📊 Key Results
 
-- Best MCC: ~0.317
-- Recall @ 10% inspection: ~0.63
+> ⚠️ **Historical / UNVERIFIED (World B)**
+> The numbers below ("Best MCC: ~0.317", "Recall @ 10% inspection: ~0.63") come
+> from `data/features/oof_predictions_context_meta_v2_blend.parquet`, a
+> 1,183,747-row file whose generating raw/intermediate/model artifacts were
+> **deliberately deleted** from this repo (see `data/README.md`). No training
+> script in this repository's history reproduces that file, so these numbers
+> are **not currently reproducible** from committed code — treat them as a
+> record of a past experiment, not a guarantee about the current pipeline.
+>
+> The only metrics that ARE reproducible today come from the committed 50,000-row
+> dev sample (271 positives, 0.542% failure rate): honest OOF MCC ranges from
+> 0.016 (baseline) to 0.131 (dataset_h), with the meta-model at 0.052 — worse
+> than its best base model. Full details, exact numbers, and regeneration
+> commands (both dev-sample and full-scale) are in
+> [`docs/reproducible_metrics_report.md`](docs/reproducible_metrics_report.md).
+
+- Best MCC: ~0.317 *(World B, historical/unverified — see note above)*
+- Recall @ 10% inspection: ~0.63 *(World B, historical/unverified — see note above)*
 - Precision: low (expected due to imbalance)
 - Fully production-safe pipeline
 
@@ -72,9 +88,24 @@ Dashboard + API + Monitoring
 ## ⚙️ How to Run
 
 ### Training (separate branch)
+
+> Note: running this end-to-end reproduces the **World-A dev-sample metrics**
+> in `docs/reproducible_metrics_report.md`, NOT the "Key Results" numbers
+> above. `scripts/prepare_data.py` defaults to processing the FULL raw CSVs
+> with no row cap — pass `--sample-rows 50000 --sample-tag dev` for the fast
+> dev-sample path. See `docs/reproducible_metrics_report.md` for both exact
+> command sequences (full-scale and dev-sample) and `data/README.md` for why
+> the historical "Key Results" numbers above cannot currently be regenerated.
+
 ```bash
 git checkout training-pipeline
-python scripts/prepare_data.py --zip-path ~/Downloads/bosch-production-line-performance.zip
+python scripts/prepare_data.py --zip-path ~/Downloads/bosch-production-line-performance.zip --overwrite
+python scripts/build_dataset_baseline.py
+python scripts/build_dataset_g.py
+python scripts/build_dataset_h.py
+python scripts/train_baseline.py
+python scripts/train_dataset_g.py
+python scripts/train_dataset_h.py
 python scripts/train_meta_model.py
 ````
 

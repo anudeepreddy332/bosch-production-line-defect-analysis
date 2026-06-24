@@ -1,5 +1,28 @@
 # Bosch Production Line Failure Decision System
 
+> ## ⚠️ WORLD-B HISTORICAL / UNVERIFIED — READ BEFORE CITING ANY NUMBER BELOW
+>
+> Every quantitative operating point in this document (recall, precision, cost,
+> thresholds, MCC, the 1,183,747-row dataset size, etc.) was computed from
+> `data/features/oof_predictions_context_meta_v2_blend.parquet` and related
+> `outputs/*.json` files generated from it. The raw, intermediate, and model
+> artifacts that produced that blend file were **deliberately deleted** from
+> this repository for packaging size and cleanliness (see `data/README.md`),
+> and **no training script in this repo's git history reproduces it** on any
+> branch.
+>
+> **These numbers are NOT reproducible from the code currently committed to
+> this repository.** They are preserved here as a historical record of a past
+> experiment and a worked example of the decision-system methodology — not as
+> a current, verifiable claim about model or system performance.
+>
+> The only metrics that are currently reproducible are the 50,000-row dev-sample
+> OOF MCC values in `outputs/training_summary.json`, tabulated with exact figures
+> and regeneration commands (both dev-sample and full-scale) in
+> [`docs/reproducible_metrics_report.md`](reproducible_metrics_report.md). Until
+> a full-scale run is executed and reviewed, full-scale recall/precision/cost
+> numbers should be treated as **unknown**, not as the values below.
+
 ## Executive Summary
 We converted a competition-style ML workflow into a production decision system for failure prevention on a highly imbalanced manufacturing problem (about **0.58% failures**). Instead of optimizing only MCC, we optimized business outcomes: failures caught, inspection load, and cost.
 

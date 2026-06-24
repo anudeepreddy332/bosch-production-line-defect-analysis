@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import pickle
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -56,8 +56,11 @@ class BoschPredictor:
         allow_leaky_features: bool = False,
     ) -> "BoschPredictor":
         model_path = Path(model_path)
-        with model_path.open("rb") as handle:
-            model_payload = pickle.load(handle)
+        # Training scripts persist payloads with joblib.dump (the project-wide
+        # convention for sklearn/LightGBM estimators); plain pickle.load cannot
+        # read those files back once they contain fitted models with internal
+        # numpy arrays, so the loader must use joblib.load to match.
+        model_payload = joblib.load(model_path)
 
         if pipeline_path is None:
             payload_pipeline_path = model_payload.get("pipeline_path")

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import pickle
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -51,8 +51,9 @@ class TwoStagePredictor:
         base_predictor = BoschPredictor.load(base_model_path, pipeline_path=pipeline_path)
 
         batch_model_path = Path(batch_model_path)
-        with batch_model_path.open("rb") as handle:
-            batch_model_payload = pickle.load(handle)
+        # See BoschPredictor.load: payloads are written with joblib.dump, so
+        # they must be read back with joblib.load, not plain pickle.load.
+        batch_model_payload = joblib.load(batch_model_path)
 
         return cls(
             base_predictor=base_predictor,
