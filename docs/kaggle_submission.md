@@ -106,10 +106,13 @@ See the commit/PR for full output. Summary:
   unlabeled feature parquet — produces a correctly shaped `Id,Response` CSV with binary int
   predictions.
 - Negative test: pointing `--model-path` at the real, committed `models/baseline_model.pkl`
-  (bare estimator) fails immediately with the dedicated "bare estimator, not a payload dict"
-  error rather than an opaque traceback.
+  (bare estimator) prints a single `ERROR: ... bare LGBMClassifier, not the Phase-2 payload
+  dict ...` line to stdout, exits 1, prints no Python traceback, and creates no output file.
+  `main()`'s CLI entrypoint catches `FileNotFoundError`/`ValueError`/`KeyError` — the failure
+  modes this script defines on purpose — for exactly this reason; any other exception type is
+  an unanticipated bug and still surfaces with its full traceback.
 - Negative test: pointing `--test-features` at a parquet missing required `feature_cols` fails
-  immediately, naming the missing columns.
+  the same way — one `ERROR:` line, exit 1, no traceback, naming the missing columns.
 - `grep` over `scripts/generate_submission.py` for `mcc|precision|recall|accuracy|confusion|
   \btp\b|\bfp\b|\btn\b|\bfn\b` (case-insensitive) returns no matches outside this sentence —
   confirming no supervised-metric computation was introduced.

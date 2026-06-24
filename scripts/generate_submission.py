@@ -145,24 +145,33 @@ def check_against_sample_submission(ids: pd.Series, sample_submission_path: Path
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
-    payload = load_validated_payload(args.model_path)
-    threshold = args.threshold if args.threshold is not None else payload["threshold"]
+    try:
+        payload = load_validated_payload(args.model_path)
+        threshold = args.threshold if args.threshold is not None else payload["threshold"]
 
-    features = load_test_features(args.test_features, payload["feature_cols"], args.id_col)
-    proba = predict_proba_ensemble(payload, features)
-    response = (proba >= float(threshold)).astype(np.int8)
+        features = load_test_features(args.test_features, payload["feature_cols"], args.id_col)
+        proba = predict_proba_ensemble(payload, features)
+        response = (proba >= float(threshold)).astype(np.int8)
 
-    submission = pd.DataFrame(
-        {
-            "Id": features[args.id_col].to_numpy(dtype=np.int64),
-            "Response": response,
-        }
-    )
+        submission = pd.DataFrame(
+            {
+                "Id": features[args.id_col].to_numpy(dtype=np.int64),
+                "Response": response,
+            }
+        )
 
-    check_against_sample_submission(submission["Id"], args.sample_submission)
+        check_against_sample_submission(submission["Id"], args.sample_submission)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    submission.to_csv(args.output, index=False)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        submission.to_csv(args.output, index=False)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        # These are the user-facing failure modes this script defines on purpose (missing
+        # files, a bare pre-Phase-2 estimator instead of a payload dict, missing feature
+        # columns, malformed payload structure). Print one line and exit 1 instead of a
+        # traceback. Anything else is an unanticipated programming error and should still
+        # surface with its full traceback.
+        print(f"ERROR: {exc}")
+        return 1
 
     print(f"model_name={payload.get('model_name')!r}")
     print(f"threshold_used={float(threshold)}")
