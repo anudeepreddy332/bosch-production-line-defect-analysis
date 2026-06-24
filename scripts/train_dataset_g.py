@@ -6,6 +6,7 @@ import pandas as pd
 import joblib
 
 from src.logger import setup_logger
+from src.training.cv import verify_persisted_fold_assignment
 from src.training.modeling import build_model_payload, train_lightgbm_oof
 from src.training.summary import update_training_summary
 
@@ -25,7 +26,10 @@ FEATURE_COLS = [
     "density_ratio",
     "chunk_id",
     "chunk_size",
-    "chunk_failure_rate",
+    # chunk_failure_rate was removed (see docs/evaluation_feature_quality_audit.md #4):
+    # chunk_id is also the CV group column, so under chunk-grouped CV a validation
+    # row's chunk_id never appears in the training-fold groupby, and the feature was
+    # provably constant (always the global mean) across all 50,000 rows.
     "rolling_fail_rate_w10000",
     "signature_failure_rate",
     "duration_x_path_failure_rate",
@@ -39,6 +43,7 @@ def main() -> None:
         raise FileNotFoundError("Missing dataset_g.parquet. Run scripts/build_dataset_g.py first.")
 
     df = pd.read_parquet(dataset_path)
+    verify_persisted_fold_assignment(df)
 
     result, fold_models = train_lightgbm_oof(
         df=df,

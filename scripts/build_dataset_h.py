@@ -68,7 +68,7 @@ def main() -> None:
     meta_df = pd.read_parquet(path_meta_path)
 
     df = baseline_df.merge(
-        meta_df[["Id", "path_signature", "path_count"]],
+        meta_df[["Id", "path_signature"]],
         on="Id",
         how="inner",
         validate="one_to_one",
@@ -79,18 +79,11 @@ def main() -> None:
     sig_transitions = {sig: transitions_from_tokens(tokens) for sig, tokens in sig_tokens.items()}
     sig_pairs = {sig: pairs_from_tokens(tokens) for sig, tokens in sig_tokens.items()}
 
-    # Non-target pair co-occurrence counts can be computed once globally.
-    pair_global_count: defaultdict[str, int] = defaultdict(int)
-    signature_freq = df["path_signature"].value_counts(dropna=False)
-    for sig, freq in signature_freq.items():
-        sig_key = "__none__" if pd.isna(sig) else str(sig)
-        for pair in sig_pairs.get(sig_key, tuple()):
-            pair_global_count[pair] += int(freq)
-
-    pair_stat_map: dict[str, tuple[float, float, float]] = {}
-    for sig in unique_signatures:
-        pair_values = [float(pair_global_count[p]) for p in sig_pairs[sig] if p in pair_global_count]
-        pair_stat_map[sig] = _mean_max_std(pair_values, default_mean=0.0)
+    # pair_global_count / path_count are NOT computed globally here (see
+    # docs/evaluation_feature_quality_audit.md #6): signature frequency is a property
+    # of which rows are present, so a full-dataset count leaks each validation row's
+    # own membership into its own feature value. Both are computed per fold below from
+    # training-fold rows only, then mapped onto the validation fold with a safe fallback.
 
     n = len(df)
     global_mean = float(df["Response"].mean())
@@ -102,6 +95,7 @@ def main() -> None:
     pair_cooccur_mean = np.zeros(n, dtype=np.float32)
     pair_cooccur_max = np.zeros(n, dtype=np.float32)
     pair_cooccur_std = np.zeros(n, dtype=np.float32)
+    path_count = np.ones(n, dtype=np.int32)
 
     cv_cfg = ChunkCVConfig(n_splits=args.n_splits, random_state=42, shuffle=True)
     splits = make_chunk_aware_splits(df, target_col="Response", group_col="chunk_id", config=cv_cfg)
@@ -110,6 +104,30 @@ def main() -> None:
     for fold_idx, (train_idx, valid_idx) in enumerate(splits):
         tr = df.iloc[train_idx]
         va = df.iloc[valid_idx]
+
+        # Training-fold-only signature frequency, used for both path_count and pair
+        # co-occurrence counts -- mirrors sig_stats/station_rate/trans_rate below in
+        # being computed from `tr` alone and mapped onto `va`.
+        train_sig_freq = tr["path_signature"].fillna("__none__").astype(str).value_counts()
+
+        fold_pair_count: defaultdict[str, int] = defaultdict(int)
+        for sig, freq in train_sig_freq.items():
+            for pair in sig_pairs.get(sig, tuple()):
+                fold_pair_count[pair] += int(freq)
+
+        va_sig_str = va["path_signature"].fillna("__none__").astype(str)
+        fold_pair_stats: dict[str, tuple[float, float, float]] = {}
+        for sig in va_sig_str.unique():
+            pair_values = [float(fold_pair_count[p]) for p in sig_pairs.get(sig, tuple()) if p in fold_pair_count]
+            fold_pair_stats[sig] = _mean_max_std(pair_values, default_mean=0.0)
+
+        # Unseen-in-training signatures fall back to count=1 (treat as a rare/novel path).
+        path_count[valid_idx] = (
+            va_sig_str.map(train_sig_freq).fillna(1).astype(np.int32).to_numpy()
+        )
+        pair_cooccur_mean[valid_idx] = va_sig_str.map(lambda s: fold_pair_stats[s][0]).to_numpy(dtype=np.float32)
+        pair_cooccur_max[valid_idx] = va_sig_str.map(lambda s: fold_pair_stats[s][1]).to_numpy(dtype=np.float32)
+        pair_cooccur_std[valid_idx] = va_sig_str.map(lambda s: fold_pair_stats[s][2]).to_numpy(dtype=np.float32)
 
         sig_stats = tr.groupby("path_signature")["Response"].agg(["sum", "count"])
 
@@ -135,7 +153,7 @@ def main() -> None:
         trans_rate = {k: trans_sum[k] / trans_cnt[k] for k in trans_sum if trans_cnt[k] > 0}
 
         valid_sig_features: dict[str, tuple[float, float, float, float]] = {}
-        for sig in va["path_signature"].fillna("__none__").astype(str).unique():
+        for sig in va_sig_str.unique():
             stations = sig_tokens.get(sig, tuple())
             transitions = sig_transitions.get(sig, tuple())
 
@@ -147,20 +165,15 @@ def main() -> None:
 
             valid_sig_features[sig] = (tr_mean, tr_max, tr_std, st_mean)
 
-        valid_sig = va["path_signature"].fillna("__none__").astype(str)
-        fold_transition_mean = valid_sig.map(lambda s: valid_sig_features[s][0]).to_numpy(dtype=np.float32)
-        fold_transition_max = valid_sig.map(lambda s: valid_sig_features[s][1]).to_numpy(dtype=np.float32)
-        fold_transition_std = valid_sig.map(lambda s: valid_sig_features[s][2]).to_numpy(dtype=np.float32)
-        fold_station_mean = valid_sig.map(lambda s: valid_sig_features[s][3]).to_numpy(dtype=np.float32)
+        fold_transition_mean = va_sig_str.map(lambda s: valid_sig_features[s][0]).to_numpy(dtype=np.float32)
+        fold_transition_max = va_sig_str.map(lambda s: valid_sig_features[s][1]).to_numpy(dtype=np.float32)
+        fold_transition_std = va_sig_str.map(lambda s: valid_sig_features[s][2]).to_numpy(dtype=np.float32)
+        fold_station_mean = va_sig_str.map(lambda s: valid_sig_features[s][3]).to_numpy(dtype=np.float32)
 
         transition_mean[valid_idx] = fold_transition_mean
         transition_max[valid_idx] = fold_transition_max
         transition_std[valid_idx] = fold_transition_std
         station_risk_mean[valid_idx] = fold_station_mean
-
-        pair_cooccur_mean[valid_idx] = valid_sig.map(lambda s: pair_stat_map[s][0]).to_numpy(dtype=np.float32)
-        pair_cooccur_max[valid_idx] = valid_sig.map(lambda s: pair_stat_map[s][1]).to_numpy(dtype=np.float32)
-        pair_cooccur_std[valid_idx] = valid_sig.map(lambda s: pair_stat_map[s][2]).to_numpy(dtype=np.float32)
 
         logger.info(
             "Dataset H fold=%d train=%d valid=%d", fold_idx, len(train_idx), len(valid_idx)
@@ -171,7 +184,7 @@ def main() -> None:
     out["transition_fail_rate_max"] = transition_max
     out["transition_fail_rate_std"] = transition_std
     out["station_risk_mean"] = station_risk_mean
-    out["path_count"] = pd.to_numeric(df["path_count"], errors="coerce").fillna(1).astype(np.int32)
+    out["path_count"] = path_count
     out["pair_cooccur_mean"] = pair_cooccur_mean
     out["pair_cooccur_max"] = pair_cooccur_max
     out["pair_cooccur_std"] = pair_cooccur_std

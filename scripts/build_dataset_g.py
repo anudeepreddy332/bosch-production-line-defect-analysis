@@ -76,7 +76,6 @@ def main() -> None:
     n = len(df)
     global_mean = float(df["Response"].mean())
 
-    chunk_failure_rate = np.full(n, global_mean, dtype=np.float32)
     signature_failure_rate = np.full(n, global_mean, dtype=np.float32)
     path_failure_rate = np.full(n, global_mean, dtype=np.float32)
     rolling_fail_rate = np.full(n, global_mean, dtype=np.float32)
@@ -89,10 +88,8 @@ def main() -> None:
         tr = df.iloc[train_idx]
         va = df.iloc[valid_idx]
 
-        chunk_rate_map = tr.groupby("chunk_id")["Response"].mean()
         sig_rate_map = tr.groupby("path_signature")["Response"].mean()
 
-        chunk_failure_rate[valid_idx] = va["chunk_id"].map(chunk_rate_map).fillna(global_mean).to_numpy(dtype=np.float32)
         signature_failure_rate[valid_idx] = (
             va["path_signature"].map(sig_rate_map).fillna(global_mean).to_numpy(dtype=np.float32)
         )
@@ -111,7 +108,6 @@ def main() -> None:
         )
 
     out = df[["Id", "Response", *BASELINE_COLUMNS]].copy()
-    out["chunk_failure_rate"] = chunk_failure_rate
     out["rolling_fail_rate_w10000"] = rolling_fail_rate
     out["signature_failure_rate"] = signature_failure_rate
     out["path_failure_rate"] = path_failure_rate
