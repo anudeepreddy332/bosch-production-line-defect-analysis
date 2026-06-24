@@ -34,7 +34,7 @@ def search_best_mcc_threshold(
     return best_thr, best_mcc
 
 
-def _compute_data_fingerprint(df: pd.DataFrame, feature_cols: list[str], target_col: str) -> str:
+def compute_data_fingerprint(df: pd.DataFrame, feature_cols: list[str], target_col: str) -> str:
     """Cheap, deterministic fingerprint of which rows/columns produced a
     model, for evidence-based provenance (not a full content hash)."""
     hasher = hashlib.sha256()
@@ -169,7 +169,7 @@ def train_lightgbm_oof(
         "best_threshold": float(best_thr),
         "oof_mcc": float(best_mcc),
         "fold_metrics": fold_metrics,
-        "data_fingerprint": _compute_data_fingerprint(df, feature_cols, target_col),
+        "data_fingerprint": compute_data_fingerprint(df, feature_cols, target_col),
     }, fold_models
 
 

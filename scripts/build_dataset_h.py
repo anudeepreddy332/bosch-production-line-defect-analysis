@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections import defaultdict
-from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from src.features.dataset_h_pipeline import (
+    compute_dataset_h_lookup_artifacts,
+    parse_signature,
+    pairs_from_tokens,
+    transitions_from_tokens,
+)
 from src.logger import setup_logger
 from src.training.cv import ChunkCVConfig, assign_fold_ids, make_chunk_aware_splits
 
@@ -26,24 +32,6 @@ BASELINE_COLUMNS = [
     "chunk_id",
     "chunk_size",
 ]
-
-
-def parse_signature(signature: str) -> tuple[str, ...]:
-    if pd.isna(signature) or signature == "__none__":
-        return tuple()
-    return tuple(token for token in str(signature).split("|") if token)
-
-
-def transitions_from_tokens(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    if len(tokens) < 2:
-        return tuple()
-    return tuple(f"{tokens[i]}>{tokens[i + 1]}" for i in range(len(tokens) - 1))
-
-
-def pairs_from_tokens(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    if len(tokens) < 2:
-        return tuple()
-    return tuple(f"{a}&{b}" for a, b in combinations(tokens, 2))
 
 
 def _mean_max_std(values: list[float], default_mean: float) -> tuple[float, float, float]:
@@ -194,6 +182,24 @@ def main() -> None:
     out.to_parquet(output_path, index=False)
 
     logger.info("Saved Dataset H: %s rows=%d", output_path, len(out))
+
+    # Full-train (not fold-restricted) lookup artifacts for scoring genuinely unseen
+    # test/incoming rows -- see src/features/dataset_h_pipeline.py for why full-train
+    # fitting is correct here even though the fold loop above is intentionally
+    # fold-restricted for leakage-free OOF predictions.
+    lookup = compute_dataset_h_lookup_artifacts(df[["Id", "Response", "path_signature"]])
+    lookup_path = FEATURES_DIR / "dataset_h_lookup.json"
+    lookup_path.write_text(json.dumps(lookup, indent=2, sort_keys=True))
+    logger.info(
+        "Saved Dataset H train-derived lookup artifacts: %s (signatures=%d stations=%d transitions=%d pairs=%d "
+        "data_fingerprint=%s)",
+        lookup_path,
+        len(lookup["path_count_train"]),
+        len(lookup["station_rate"]),
+        len(lookup["trans_rate"]),
+        len(lookup["pair_count_train"]),
+        lookup["data_fingerprint"],
+    )
 
 
 if __name__ == "__main__":

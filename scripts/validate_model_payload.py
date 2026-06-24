@@ -29,6 +29,14 @@ different, smaller feature set than FeaturePipeline emits. Reconciling that
 mismatch is a separate, later effort (see CLAUDE.md "Two distinct inference code
 paths"). This script validates the part of the contract that IS achievable
 today: payload structure and joblib.dump<->joblib.load loadability.
+
+dataset_h additionally needs data/features/dataset_h_lookup.json (a train-derived
+lookup artifact, gitignored/regenerable via scripts/build_dataset_h.py -- see
+src/features/dataset_h_pipeline.py) to run inference on unlabeled rows. That file
+is not part of the models/dataset_h_model.pkl payload itself, so this script also
+cross-checks it against the payload's data_fingerprint when checking
+dataset_h_model.pkl, and fails with a precise, actionable error if the lookup is
+missing or was fit from a different training run.
 """
 from __future__ import annotations
 
@@ -41,9 +49,11 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from src.features.dataset_h_pipeline import load_dataset_h_lookup, validate_dataset_h_lookup_compatibility
 from src.training.modeling import build_model_payload, train_lightgbm_oof
 
 ROOT = Path(__file__).resolve().parents[1]
+DATASET_H_LOOKUP_PATH = ROOT / "data" / "features" / "dataset_h_lookup.json"
 
 REQUIRED_KEYS = {
     "models",
@@ -213,6 +223,24 @@ def main() -> int:
             print(f"  {pkl_path.name}: INVALID payload -- {file_problems}")
         else:
             print(f"  {pkl_path.name}: valid payload (model_name={obj.get('model_name')!r})")
+
+        if obj.get("model_name") == "dataset_h":
+            print(f"    checking dataset_h lookup dependency: {DATASET_H_LOOKUP_PATH}")
+            try:
+                lookup = load_dataset_h_lookup(DATASET_H_LOOKUP_PATH)
+            except (FileNotFoundError, ValueError) as exc:
+                overall_ok = False
+                print(f"    FAIL: {exc}")
+            else:
+                lookup_problems = validate_dataset_h_lookup_compatibility(obj, lookup)
+                if lookup_problems:
+                    overall_ok = False
+                    print(f"    FAIL: {lookup_problems}")
+                else:
+                    print(
+                        f"    PASS: lookup present and data_fingerprint matches "
+                        f"({lookup['data_fingerprint']}) -- dataset_h inference is runnable."
+                    )
 
     print(
         "\nNOTE: BoschPredictor.load() is intentionally NOT exercised end-to-end here -- it "

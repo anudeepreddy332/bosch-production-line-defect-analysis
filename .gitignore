@@ -36,6 +36,7 @@ data/artifacts/
 # Comment this out if you WANT to track features
 data/features/*.parquet
 data/features/*.pkl
+data/features/*.json
 
 # =========================
 # 📈 Outputs (EXPERIMENTAL)
