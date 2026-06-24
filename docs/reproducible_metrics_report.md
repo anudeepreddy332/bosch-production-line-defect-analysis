@@ -126,7 +126,7 @@ python scripts/train_meta_model.py
 
 This reproduces the World-A numbers in Section 1 (modulo any randomness in
 training; see each training script for seeding). `data/processed/PROVENANCE.json`
-will record `sample_rows: 50000`, `sample_tag: "dev"`, `is_full_data: false`
+will record `requested_sample_rows: 50000`, `sample_tag: "dev"`, `is_full_data: false`
 after this run, so the resulting parquet files are self-documenting.
 
 ---
