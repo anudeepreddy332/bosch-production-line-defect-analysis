@@ -53,11 +53,16 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   Kaggle's `sample_submission`.
 - **Constraint:** no local supervised metrics — Kaggle test labels are hidden, so MCC/precision/
   recall cannot be computed locally for this track.
-- **Current state: does not exist.** There is no `scripts/generate_submission.py` or equivalent
-  anywhere in this repo (confirmed by searching `scripts/`, `src/`, `apps/` for `submission` /
-  `Kaggle` — the only hits are comments in `src/_deprecated/`). `tasks.md` describes a related
-  but distinct batch-inference spec that was also never built. This document does **not**
-  implement Track 2; it only records that the track is now explicitly named and currently empty.
+- **Current state: scripts/generate_submission.py exists, but cannot yet produce a real
+  full-size submission.** It loads a Phase-2 model payload, applies it to an already
+  feature-engineered unlabeled test table, and writes `Id,Response` — see
+  `docs/kaggle_submission.md` for the full design and validation evidence. Two pre-existing gaps
+  block an actual end-to-end run today: (1) no test-side feature-engineering script exists (only
+  `train_*` has a `build_dataset_*.py`), so there is no engineered test parquet to point the
+  script at; (2) the committed `models/*.pkl` are still bare `LGBMClassifier` objects (pre-Phase-2
+  format), not the payload dict the script requires. Both are documented as known limitations in
+  `docs/kaggle_submission.md`, not fixed in that change. `tasks.md` describes a related but
+  distinct batch-inference spec that was also never built.
 
 ## Track 3: Production Inference Simulation
 
@@ -135,7 +140,7 @@ Monitoring view backed by unlabeled batch output once Track 3 actually produces 
 | Track / View | Target | Current state |
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
-| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Does not exist** — no code, no doc claims otherwise once `bosch_agent.md`'s "ignore for now" is updated |
+| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
 | Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Mislabeled**: `run_batch_simulation.py` exists but runs Track 1 logic (supervised metrics on labeled `Response`) under a Track 3 name |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Does not exist** in `apps/streamlit_dashboard/app.py` |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
@@ -190,8 +195,11 @@ follow-up, not actioned here:
 4. `README.md` and `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` need their "Production
    Pipeline"/"production decision system" framing split so that View-B/Track-1-sourced numbers
    are clearly attributed, separately from any future genuinely label-free Track 3 output.
-5. Track 2 (Kaggle submission) has no code at all — `scripts/generate_submission.py` (or
-   equivalent) does not exist.
+5. Track 2 (Kaggle submission) now has `scripts/generate_submission.py`, but needs (a) a
+   test-side feature-engineering script analogous to `build_dataset_{baseline,g,h}.py`, (b)
+   persisted OOF-safe rate-lookup tables so `dataset_g`/`dataset_h`/`meta_model` features can be
+   computed on test rows without leaking, and (c) a real training run to regenerate `models/*.pkl`
+   in the Phase-2 payload format. See `docs/kaggle_submission.md`.
 6. `CLAUDE.md`'s claim that "the dashboard and decision-system code already enforce this split"
    should be revisited once 1–2 are addressed, since it currently overstates the present state.
 
