@@ -72,10 +72,11 @@ def _build_numeric_core(numeric_path: Path, temp_output: Path, batch_size: int) 
         out = pd.DataFrame(
             {
                 "Id": pd.to_numeric(chunk["Id"], errors="coerce").astype(np.int64),
-                "Response": pd.to_numeric(chunk["Response"], errors="coerce").fillna(0).astype(np.int8),
                 "feature_mean": chunk[sensor_cols].mean(axis=1, skipna=True).astype(np.float32),
             }
         )
+        if "Response" in chunk.columns:
+            out["Response"] = pd.to_numeric(chunk["Response"], errors="coerce").fillna(0).astype(np.int8)
 
         writer = _append_parquet(writer, out, temp_output)
         rows += len(out)

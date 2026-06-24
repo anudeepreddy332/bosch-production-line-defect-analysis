@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import joblib
 
+from src.features.dataset_h_pipeline import DATASET_H_FEATURE_COLS
 from src.logger import setup_logger
 from src.training.cv import verify_persisted_fold_assignment
 from src.training.modeling import build_model_payload, train_lightgbm_oof
@@ -17,24 +18,10 @@ FEATURES_DIR = ROOT / "data" / "features"
 OUTPUTS_DIR = ROOT / "outputs"
 SUMMARY_PATH = OUTPUTS_DIR / "training_summary.json"
 
-FEATURE_COLS = [
-    "start_time",
-    "duration",
-    "feature_mean",
-    "records_last_1hr",
-    "records_last_24hr",
-    "density_ratio",
-    "chunk_id",
-    "chunk_size",
-    "transition_fail_rate_mean",
-    "transition_fail_rate_max",
-    "transition_fail_rate_std",
-    "station_risk_mean",
-    "path_count",
-    "pair_cooccur_mean",
-    "pair_cooccur_max",
-    "pair_cooccur_std",
-]
+# Canonical column list lives in src/features/dataset_h_pipeline.py so the test-side
+# feature builder (scripts/build_test_dataset_h.py) can never drift from what this
+# script trains the model on.
+FEATURE_COLS = DATASET_H_FEATURE_COLS
 
 
 def main() -> None:
