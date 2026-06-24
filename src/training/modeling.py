@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 import lightgbm as lgb
@@ -32,6 +34,19 @@ def search_best_mcc_threshold(
     return best_thr, best_mcc
 
 
+def _compute_data_fingerprint(df: pd.DataFrame, feature_cols: list[str], target_col: str) -> str:
+    """Cheap, deterministic fingerprint of which rows/columns produced a
+    model, for evidence-based provenance (not a full content hash)."""
+    hasher = hashlib.sha256()
+    hasher.update(repr(sorted(feature_cols)).encode())
+    hasher.update(str(len(df)).encode())
+    id_hash = pd.util.hash_pandas_object(df[["Id"]].sort_values("Id"), index=False).sum()
+    hasher.update(str(int(id_hash)).encode())
+    if target_col in df.columns:
+        hasher.update(str(int(df[target_col].sum())).encode())
+    return hasher.hexdigest()[:16]
+
+
 def train_lightgbm_oof(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -41,7 +56,7 @@ def train_lightgbm_oof(
     target_col: str = "Response",
     group_col: str = "chunk_id",
     cv_config: ChunkCVConfig | None = None,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], list[lgb.LGBMClassifier]]:
     if target_col not in df.columns:
         raise ValueError(f"Missing target column: {target_col}")
     if group_col not in df.columns:
@@ -57,7 +72,7 @@ def train_lightgbm_oof(
     oof_pred = np.zeros(len(df), dtype=np.float32)
     feature_importance = np.zeros(len(feature_cols), dtype=np.float64)
     fold_metrics: list[dict[str, float]] = []
-    final_model = None
+    fold_models: list[lgb.LGBMClassifier] = []
 
     logger.info("Training model=%s with %d rows and %d features", model_name, len(df), len(feature_cols))
 
@@ -91,7 +106,7 @@ def train_lightgbm_oof(
             eval_metric="binary_logloss",
             callbacks=[lgb.early_stopping(stopping_rounds=100, verbose=False)],
         )
-        final_model = model
+        fold_models.append(model)
 
         pred_valid = model.predict_proba(X_valid)[:, 1].astype(np.float32)
         oof_pred[valid_idx] = pred_valid
@@ -154,4 +169,32 @@ def train_lightgbm_oof(
         "best_threshold": float(best_thr),
         "oof_mcc": float(best_mcc),
         "fold_metrics": fold_metrics,
-    }, final_model
+        "data_fingerprint": _compute_data_fingerprint(df, feature_cols, target_col),
+    }, fold_models
+
+
+def build_model_payload(
+    result: dict[str, object],
+    fold_models: list[lgb.LGBMClassifier],
+) -> dict[str, object]:
+    """Assemble the on-disk model artifact from train_lightgbm_oof's output.
+
+    `models` is nested as one list per CV fold (`[[fold_0_model], [fold_1_model], ...]`)
+    to match the {fold: [inner-ensemble models]} shape `BoschPredictor`/`TwoStagePredictor`
+    already iterate over (`for fold_models in self.models: for model in fold_models: ...`);
+    each fold here holds exactly one model since this phase serves a CV-fold ensemble,
+    not a per-fold multi-seed ensemble or a single full-data refit.
+    """
+    fold_metrics = list(result["fold_metrics"])
+    return {
+        "models": [[model] for model in fold_models],
+        "feature_cols": list(result["features"]),
+        "threshold": float(result["best_threshold"]),
+        "model_name": result["model_name"],
+        "oof_mcc": float(result["oof_mcc"]),
+        "fold_metrics": fold_metrics,
+        "fold_mccs": [float(m["mcc"]) for m in fold_metrics],
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "training_rows": int(result["rows"]),
+        "data_fingerprint": result.get("data_fingerprint"),
+    }
