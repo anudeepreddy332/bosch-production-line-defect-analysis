@@ -64,6 +64,25 @@ def iter_csv_files(raw_dir: Path) -> list[Path]:
     return csv_files
 
 
+def _categorical_target_schema(csv_path: Path) -> pa.Schema:
+    """Fixed per-column Arrow schema for a Bosch *_categorical.csv file.
+
+    Bosch categorical columns are extremely sparse (many are 100% null in any
+    given 50k-row chunk) and hold alphanumeric level codes (e.g. "T1") in
+    other chunks. Without a fixed target schema, pandas/pyarrow infer an
+    all-null chunk's column as float/null type, and the writer then locks
+    that in from chunk 1 -- a later chunk with real string values fails to
+    cast into that narrower type. Declaring every non-Id column as pa.string()
+    up front makes every chunk's schema identical regardless of nullness.
+    """
+    header_cols = pd.read_csv(csv_path, nrows=0).columns
+    fields = [
+        pa.field("Id", pa.int64()) if col == "Id" else pa.field(col, pa.string())
+        for col in header_cols
+    ]
+    return pa.schema(fields)
+
+
 def optimize_chunk_dtypes(chunk: pd.DataFrame) -> pd.DataFrame:
     for col in chunk.columns:
         if col == "Response":
@@ -125,13 +144,17 @@ def convert_csv_to_parquet_incremental(
     )
     start_time = time.time()
 
+    is_categorical = "categorical" in csv_path.stem.lower()
+    target_schema = _categorical_target_schema(csv_path) if is_categorical else None
+    read_kwargs = {"dtype": str} if is_categorical else {}
+
     writer: pq.ParquetWriter | None = None
     total_rows = 0
     chunk_count = 0
 
     try:
         for chunk_count, chunk in enumerate(
-            pd.read_csv(csv_path, chunksize=chunksize, low_memory=False), start=1
+            pd.read_csv(csv_path, chunksize=chunksize, low_memory=False, **read_kwargs), start=1
         ):
             if sample_rows is not None and total_rows >= sample_rows:
                 break
@@ -142,7 +165,7 @@ def convert_csv_to_parquet_incremental(
             chunk = optimize_chunk_dtypes(chunk)
             total_rows += len(chunk)
 
-            table = pa.Table.from_pandas(chunk, preserve_index=False)
+            table = pa.Table.from_pandas(chunk, schema=target_schema, preserve_index=False)
             if writer is None:
                 writer = pq.ParquetWriter(
                     parquet_path,
