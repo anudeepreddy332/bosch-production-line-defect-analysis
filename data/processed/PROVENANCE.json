@@ -1,54 +1,54 @@
 {
-  "generated_at_utc": "2026-06-24T07:40:32.964448+00:00",
-  "git_sha": "75f5758e8d5567a552b23d6b4e37c2bceb422ea0",
-  "requested_sample_rows": 50000,
-  "sample_tag": "dev",
-  "status": "sample",
-  "is_full_data": false,
+  "generated_at_utc": "2026-06-24T09:24:24.895590+00:00",
+  "git_sha": "90d48d8d0675534f143f6603391e27b7d9c584b3",
+  "requested_sample_rows": null,
+  "sample_tag": null,
+  "status": "full_data",
+  "is_full_data": true,
   "row_counts": {
-    "sample_submission.parquet": 50000,
-    "test_categorical.parquet": 50000,
-    "test_date.parquet": 50000,
-    "test_numeric.parquet": 50000,
-    "train_categorical.parquet": 50000,
-    "train_date.parquet": 50000,
-    "train_numeric.parquet": 50000
+    "sample_submission.parquet": 1183748,
+    "test_categorical.parquet": 1183748,
+    "test_date.parquet": 1183748,
+    "test_numeric.parquet": 1183748,
+    "train_categorical.parquet": 1183747,
+    "train_date.parquet": 1183747,
+    "train_numeric.parquet": 1183747
   },
   "files": {
     "sample_submission.parquet": {
-      "rows": 50000,
+      "rows": 1183748,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "test_categorical.parquet": {
-      "rows": 50000,
+      "rows": 1183748,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "test_date.parquet": {
-      "rows": 50000,
+      "rows": 1183748,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "test_numeric.parquet": {
-      "rows": 50000,
+      "rows": 1183748,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "train_categorical.parquet": {
-      "rows": 50000,
+      "rows": 1183747,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "train_date.parquet": {
-      "rows": 50000,
+      "rows": 1183747,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     },
     "train_numeric.parquet": {
-      "rows": 50000,
+      "rows": 1183747,
       "action": "generated",
-      "full_data_status": "generated_sample"
+      "full_data_status": "generated_full"
     }
   },
   "note": "Per-file full_data_status: 'generated_full' = this file was freshly converted from its source CSV during THIS run with no --sample-rows cap (directly observed). 'generated_sample' = freshly converted THIS run with an explicit --sample-rows cap (directly observed). 'sampled' = this file already existed and was SKIPPED (not regenerated) this run, but a previous PROVENANCE.json recorded the exact same row count for this filename as a sample, carried forward as a conservative, safe-direction claim. 'unverified' = this file already existed and was skipped, and there is no trustworthy evidence it is a sample; this is also used whenever a previous record claimed FULL data for a skipped file, because a claim of full data is never itself treated as proof -- that asymmetry is intentional: omitting --sample-rows must never imply full data for a file that was not actually regenerated this run. Overall 'status' is 'full_data' only if every file is generated_full; 'sample' only if every file is generated_sample or sampled; 'mixed' if some files are confirmed full and others confirmed sample; 'unknown' if any file is unverified. 'is_full_data' is a derived convenience boolean (true/false only when status is unambiguous; null when status is 'mixed' or 'unknown', since no boolean can honestly represent those cases)."
