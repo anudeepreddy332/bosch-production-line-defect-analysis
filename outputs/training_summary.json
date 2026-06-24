@@ -48,7 +48,8 @@
           "best_threshold": 0.06,
           "mcc": 0.002389819596159956
         }
-      ]
+      ],
+      "data_fingerprint": "2c4d686a42b82565"
     },
     "dataset_g": {
       "model_name": "dataset_g",
@@ -62,7 +63,6 @@
         "density_ratio",
         "chunk_id",
         "chunk_size",
-        "chunk_failure_rate",
         "rolling_fail_rate_w10000",
         "signature_failure_rate",
         "duration_x_path_failure_rate",
@@ -103,7 +103,8 @@
           "best_threshold": 0.62,
           "mcc": 0.07526965073995809
         }
-      ]
+      ],
+      "data_fingerprint": "f8dbb6e53d1b8772"
     },
     "dataset_h": {
       "model_name": "dataset_h",
@@ -128,40 +129,41 @@
       ],
       "oof_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/data/features/oof_predictions_dataset_h.parquet",
       "feature_importance_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/outputs/feature_importance_dataset_h.csv",
-      "best_threshold": 0.16,
-      "oof_mcc": 0.13053326149364966,
+      "best_threshold": 0.19,
+      "oof_mcc": 0.09725962897650973,
       "fold_metrics": [
         {
           "fold": 0.0,
           "rows": 10000.0,
-          "best_threshold": 0.16,
-          "mcc": 0.12698009717794773
+          "best_threshold": 0.08,
+          "mcc": 0.10845860844492781
         },
         {
           "fold": 1.0,
           "rows": 10000.0,
-          "best_threshold": 0.26,
-          "mcc": 0.18929723047236863
+          "best_threshold": 0.15,
+          "mcc": 0.16774380948880221
         },
         {
           "fold": 2.0,
           "rows": 10000.0,
-          "best_threshold": 0.16,
-          "mcc": 0.09672743950808516
+          "best_threshold": 0.76,
+          "mcc": 0.0971840986991468
         },
         {
           "fold": 3.0,
           "rows": 10000.0,
-          "best_threshold": 0.23,
-          "mcc": 0.11816639902885182
+          "best_threshold": 0.36,
+          "mcc": 0.12695127666487865
         },
         {
           "fold": 4.0,
           "rows": 10000.0,
-          "best_threshold": 0.44,
-          "mcc": 0.20044041877815433
+          "best_threshold": 0.69,
+          "mcc": 0.16061857580451627
         }
-      ]
+      ],
+      "data_fingerprint": "6c550911772ac7ef"
     },
     "meta_model": {
       "model_name": "meta_model",
@@ -177,45 +179,46 @@
       ],
       "oof_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/data/features/oof_predictions_final.parquet",
       "feature_importance_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/outputs/feature_importance_meta_model.csv",
-      "best_threshold": 0.16,
-      "oof_mcc": 0.05226778747289521,
+      "best_threshold": 0.21,
+      "oof_mcc": 0.03189334352773844,
       "fold_metrics": [
         {
           "fold": 0.0,
           "rows": 10000.0,
-          "best_threshold": 0.03,
-          "mcc": 0.05448759152482216
+          "best_threshold": 0.11,
+          "mcc": 0.03899043942031862
         },
         {
           "fold": 1.0,
           "rows": 10000.0,
-          "best_threshold": 0.95,
-          "mcc": 0.13629338834790133
+          "best_threshold": 0.63,
+          "mcc": 0.029391892755607427
         },
         {
           "fold": 2.0,
           "rows": 10000.0,
-          "best_threshold": 0.98,
-          "mcc": 0.11250773805179887
+          "best_threshold": 0.43,
+          "mcc": 0.023611564530416757
         },
         {
           "fold": 3.0,
           "rows": 10000.0,
-          "best_threshold": 0.34,
-          "mcc": 0.06619946227493441
+          "best_threshold": 0.38,
+          "mcc": 0.062002756081292694
         },
         {
           "fold": 4.0,
           "rows": 10000.0,
-          "best_threshold": 0.04,
-          "mcc": 0.05302904056308323
+          "best_threshold": 0.26,
+          "mcc": 0.04667602241039731
         }
       ],
+      "data_fingerprint": "1f12ea5dd4a6b164",
       "meta_dataset_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/data/features/meta_dataset.parquet",
       "base_thresholds": {
         "baseline": 0.51,
         "dataset_g": 0.32,
-        "dataset_h": 0.16
+        "dataset_h": 0.19
       }
     }
   }

@@ -28,18 +28,32 @@ hand-edit), is:
 |--------------|----------|-----------------|--------|
 | baseline     | 0.0157   | 0.51            | 50,000 |
 | dataset_g    | 0.0459   | 0.32            | 50,000 |
-| dataset_h    | 0.1305   | 0.16            | 50,000 |
-| meta_model   | 0.0523   | 0.16            | 50,000 |
+| dataset_h    | 0.0973   | 0.19            | 50,000 |
+| meta_model   | 0.0319   | 0.21            | 50,000 |
 
 (Exact values: baseline=0.015705377012653475, dataset_g=0.045940838678381495,
-dataset_h=0.13053326149364966, meta_model=0.05226778747289521.)
+dataset_h=0.09725962897650973, meta_model=0.03189334352773844.)
+
+**Updated 2026-06-24 on `feature/dev-sample-refresh-post-methodology-fix`** by rerunning
+Section 3b end-to-end against the current code (post `3db7901`, which removed the
+`chunk_failure_rate` leak in `dataset_g` and fold-restricted the `pair_cooccur_*`/
+`path_count` computation in `dataset_h`). `dataset_h` and `meta_model` moved from
+0.1305/0.0523 to 0.0973/0.0319 — `baseline` and `dataset_g` are materially unchanged
+(`dataset_g`'s feature list dropped `chunk_failure_rate`, which already carried zero
+feature importance pre-fix, consistent with the score not moving). `meta_model` moved
+even though no direct leakage fix targeted it, because it stacks `dataset_h`'s
+now-corrected OOF predictions as one of its meta-features. See
+`docs/evaluation_feature_quality_audit.md` for the original (pre-fix) numbers and the
+diagnosis that led to this fix; do not read that document's Section 3 table as current.
 
 Notable, currently-true findings from this sample:
-- **The meta-model is worse than its best base model** (`dataset_h` at 0.1305 vs.
-  meta_model at 0.0523). This is a regressive stack on this sample size — stacking
-  is not currently adding value here.
+- **The meta-model is worse than its best base model** (`dataset_h` at 0.0973 vs.
+  meta_model at 0.0319) — stacking subtracts roughly two-thirds of `dataset_h`'s OOF
+  MCC, a *larger* relative gap than the pre-fix numbers showed (0.1305 vs. 0.0523).
+  This is a regressive stack on this sample size — stacking is not currently adding
+  value here.
 - **Per-fold thresholds are highly unstable**, especially for the meta-model
-  (best thresholds per fold: 0.03, 0.95, 0.98, 0.34, 0.04). This instability is
+  (best thresholds per fold: 0.11, 0.63, 0.43, 0.38, 0.26). This instability is
   expected and largely explained by the tiny number of positives per fold
   (~54), not by a code defect.
 

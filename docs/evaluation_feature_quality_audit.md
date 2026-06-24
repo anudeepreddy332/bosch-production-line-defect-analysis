@@ -1,5 +1,14 @@
 # Evaluation & Feature-Quality Audit
 
+**Status note (2026-06-24):** the leakage bugs this audit found (`chunk_failure_rate` in
+`dataset_g`, fold-unrestricted `pair_cooccur_*`/`path_count` in `dataset_h`) were fixed in
+`3db7901`, and the fix has since been verified against a fresh 50k dev-sample rerun on
+`feature/dev-sample-refresh-post-methodology-fix`. The OOF MCC numbers quoted throughout this
+document (§3, e.g. `dataset_h`=0.1305, `meta_model`=0.0523) are the **pre-fix** numbers that
+motivated the fix — they are intentionally left unchanged below as the historical record of what
+was found. For the current, post-fix numbers, see `docs/reproducible_metrics_report.md` §1
+(`dataset_h`=0.0973, `meta_model`=0.0319).
+
 **Scope:** read-only inspection of the currently committed, reproducible artifacts (data, features,
 models, metrics). No training was run to produce this report — every number below is read directly
 from committed parquet/JSON/CSV files or from re-running the existing, already-saved CV split logic
