@@ -23,10 +23,23 @@ flowchart TD
    - sliding-window mode with persistent pointer and reset-on-end.
 5. Generate drift reports with Evidently on stable reference/current split (ID columns excluded).
 
+**Note on the diagram above:** the "Batch Simulator" / "Batch Logs\nrecall/precision/flagged"
+path is labeled OOF data (`A["OOF Predictions + Labels"]`) -- this is Track 1 / Offline
+Evaluation (`scripts/run_offline_batch_eval.py`), not production inference; see
+`docs/ml_system_tracks.md` for the three-track split. A genuinely label-free Track 3
+production batch inference path now exists (`scripts/run_production_inference.py`,
+dataset_h only): unlabeled rows -> `scripts/build_test_dataset_h.py`'s feature contract ->
+model `predict_proba` -> the same `DecisionPolicy`/hybrid policy this diagram's "Policy
+Selection" node already represents -> append-only, cycle/batch-partitioned output
+(`outputs/production/dataset_h/cycle={n}/batch={n}/predictions.parquet`), with no
+recall/precision/flagged-vs-truth anywhere. Not yet drawn as its own diagram node --
+that and wiring it into the Streamlit dashboard are follow-up work.
+
 ## Runtime Components
 - Decision framework: `src/evaluation/decision_system.py`
 - Inference decision engine: `src/inference/decision_engine.py`
-- Batch simulator: `scripts/run_batch_simulation.py`
+- Offline batch eval (Track 1, labeled replay): `scripts/run_offline_batch_eval.py`
+- Production batch inference (Track 3, label-free): `scripts/run_production_inference.py`
 - Monitoring: `src/monitoring/drift_detection.py`
 - API: `apps/api/main.py`
 - Dashboard: `apps/streamlit_dashboard/app.py`

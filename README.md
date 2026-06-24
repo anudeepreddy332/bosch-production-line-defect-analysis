@@ -33,7 +33,10 @@ This project focuses on:
 
 ### 🔵 Production Pipeline (`main` branch)
 - Decision system (threshold + cost optimization)
-- Batch simulation (streaming-like behavior)
+- Production batch inference (label-free, `scripts/run_production_inference.py` --
+  see `docs/ml_system_tracks.md` Track 3). The previous "batch simulation" step here
+  was actually labeled offline evaluation; it now lives separately as
+  `scripts/run_offline_batch_eval.py` (Track 1), not part of this pipeline.
 - Drift detection (Evidently)
 - API (FastAPI)
 - Dashboard (Streamlit)

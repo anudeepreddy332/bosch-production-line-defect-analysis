@@ -80,7 +80,8 @@ Production stack includes:
 - **Decision engine** (`src/inference/decision_engine.py`)
 - **FastAPI service** (`apps/api/main.py`)
 - **Streamlit dashboard** (`apps/streamlit_dashboard/app.py`)
-- **Batch simulator** (`scripts/run_batch_simulation.py`)
+- **Offline batch eval, Track 1 labeled replay** (`scripts/run_offline_batch_eval.py`)
+- **Production batch inference, Track 3 label-free** (`scripts/run_production_inference.py`)
 - **Evidently monitoring** (`src/monitoring/drift_detection.py`)
 
 The model outputs risk scores; the decision engine converts those into operational actions.
@@ -120,6 +121,15 @@ From `outputs/production_decision_summary.json` and related CSVs:
 ---
 
 ## 8. Simulation Results
+
+**Track 1 / Offline Evaluation, not production inference.** These numbers come from
+`scripts/run_offline_batch_eval.py` (formerly `run_batch_simulation.py`) replaying
+labeled OOF data batch-by-batch -- recall/precision are only ever valid against
+labeled data, never against the unlabeled stream Track 3 actually scores. See
+`docs/ml_system_tracks.md` for the three-track split and `scripts/run_production_inference.py`
+for the genuinely label-free production batch inference path (no recall/precision
+anywhere in its output, by construction).
+
 From `outputs/batch_simulation_summary.json`:
 - Policy: `threshold_high=0.6`, `inspection_budget=10%`
 - Mean recall across simulated batches: **0.6320**

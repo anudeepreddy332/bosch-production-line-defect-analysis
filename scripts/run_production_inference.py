@@ -12,7 +12,7 @@ that script's labeled-metric computation).
 This script NEVER reads or requires `Response` and NEVER computes a supervised metric
 (no MCC, precision, recall, accuracy, confusion matrix, TP/FP/TN/FN) -- it only emits:
   - per-row risk scores and policy decisions (predictions, not metrics)
-  - batch_id / cycle_id / a UTC timestamp
+  - batch_id / cycle_id / run_seq / a UTC timestamp
   - batch-level counts and score-distribution statistics (of OUR OWN predictions,
     never compared against ground truth)
 
@@ -23,16 +23,32 @@ sliding-mode state pattern) -- one call processes one batch and wraps to a new c
 when it reaches the end of the dataset. Output is append-only and partitioned by
 cycle/batch (`outputs/production/dataset_h/cycle={n}/batch={n}/predictions.parquet`);
 an existing batch path is never overwritten.
+
+batch_id/cycle_id semantics follow `tasks.md`'s documented state-machine contract
+(TASK 5 / "LOOP LOGIC": "if all batches complete -> reset batch_id -> increment
+cycle_id"; example state `{"cycle_id": 1, "last_batch_id": 3}`; example paths
+`cycle=1/batch=001`, `cycle=1/batch=002`): `batch_id` resets to 0 at the start of each
+new cycle, `cycle_id` increments on wraparound. A separate `run_seq` field is a
+lifetime-global monotonic counter (never resets) for unambiguous ordering across the
+whole run history -- it is intentionally a distinct field rather than overloading
+batch_id with two meanings.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # so `from scripts...`/`from src...` resolve when run via
+# `python scripts/run_production_inference.py` without PYTHONPATH set externally --
+# matches scripts/run_offline_batch_eval.py and scripts/build_decision_summary.py, both
+# invoked the same way by scripts/run_full_system.py.
 
 from scripts.generate_submission import load_validated_payload, predict_proba_ensemble
 from src.inference.decision_engine import apply_hybrid, load_policy
@@ -40,7 +56,6 @@ from src.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-ROOT = Path(__file__).resolve().parents[1]
 FEATURES_DIR = ROOT / "data" / "features"
 MODELS_DIR = ROOT / "models"
 OUTPUTS_DIR = ROOT / "outputs"
@@ -57,10 +72,11 @@ def _load_state(state_path: Path, dataset_rows: int) -> dict:
         try:
             state = json.loads(state_path.read_text())
             if int(state.get("dataset_rows", -1)) == dataset_rows:
+                state.setdefault("run_seq", 0)  # tolerate state files predating this field
                 return state
         except (json.JSONDecodeError, OSError, ValueError):
             pass
-    return {"pointer": 0, "cycle_id": 0, "batch_id": 0, "dataset_rows": dataset_rows}
+    return {"pointer": 0, "cycle_id": 0, "batch_id": 0, "run_seq": 0, "dataset_rows": dataset_rows}
 
 
 def _score_distribution(pred: np.ndarray) -> dict:
@@ -113,6 +129,7 @@ def run_one_batch(
     scored_at_utc = datetime.now(timezone.utc).isoformat()
     cycle_id = int(state["cycle_id"])
     batch_id = int(state["batch_id"])
+    run_seq = int(state["run_seq"])
 
     rows_out = pd.DataFrame(
         {
@@ -123,6 +140,7 @@ def run_one_batch(
             "manual_inspect": manual,
             "batch_id": np.full(len(batch), batch_id, dtype=np.int64),
             "cycle_id": np.full(len(batch), cycle_id, dtype=np.int64),
+            "run_seq": np.full(len(batch), run_seq, dtype=np.int64),
             "scored_at_utc": scored_at_utc,
         }
     )
@@ -143,6 +161,7 @@ def run_one_batch(
         "scored_at_utc": scored_at_utc,
         "cycle_id": cycle_id,
         "batch_id": batch_id,
+        "run_seq": run_seq,
         "batch_start": start,
         "batch_end": end,
         "rows": int(end - start),
@@ -168,10 +187,14 @@ def run_one_batch(
 
     next_pointer = 0 if reset_triggered else end
     next_cycle_id = cycle_id + 1 if reset_triggered else cycle_id
+    # batch_id resets per cycle (tasks.md TASK 5: "reset batch_id -> increment cycle_id");
+    # run_seq is the separate, never-resetting lifetime counter.
+    next_batch_id = 0 if reset_triggered else batch_id + 1
     state_out = {
         "pointer": next_pointer,
         "cycle_id": next_cycle_id,
-        "batch_id": batch_id + 1,
+        "batch_id": next_batch_id,
+        "run_seq": run_seq + 1,
         "dataset_rows": n,
         "last_batch_start": start,
         "last_batch_end": end,
@@ -181,9 +204,10 @@ def run_one_batch(
     state_path.write_text(json.dumps(state_out, indent=2))
 
     logger.info(
-        "Scored batch cycle=%d batch=%d rows=%d flagged=%d (%.4f%%) -> %s",
+        "Scored batch cycle=%d batch=%d run_seq=%d rows=%d flagged=%d (%.4f%%) -> %s",
         cycle_id,
         batch_id,
+        run_seq,
         stats_row["rows"],
         flagged,
         stats_row["flagged_pct"],
@@ -228,6 +252,7 @@ def main() -> None:
 
     print(f"cycle_id={stats_row['cycle_id']}")
     print(f"batch_id={stats_row['batch_id']}")
+    print(f"run_seq={stats_row['run_seq']}")
     print(f"rows_scored={stats_row['rows']}")
     print(f"flagged_count={stats_row['flagged_count']} ({stats_row['flagged_pct']:.4f}%)")
     print(f"pred_mean={stats_row['pred_mean']:.6f}")

@@ -75,20 +75,37 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
 - **Output:** predictions, risk scores, batch stats, drift/data-quality summaries.
 - **Constraint:** no MCC/precision/recall/accuracy/TP/FP/TN/FN/confusion matrix anywhere in this
   track's output, because by definition its input is unlabeled.
-- **Current state: code exists but does not satisfy the constraint.** `scripts/run_batch_simulation.py`
-  is the script positioned as this track (it's literally named "batch simulation" and is wired
-  into `scripts/run_full_system.py`'s "production" stage and described as part of the
-  "Production Pipeline" in `README.md`). In its current form it reads
-  `data/features/meta_dataset.parquet` **with the `Response` column** and calls
-  `src/inference/decision_engine.py::metrics_from_labels` / `simulate_batches`, which compute
-  `recall`, `precision`, `tp`, `fp`, `fn`, `tn` per batch — all supervised metrics on labeled
-  data. That output is then surfaced as `outputs/batch_simulation_summary.json` and quoted in
-  `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` §8 ("Simulation Results... Mean recall across
-  simulated batches"). **This is Track 1 work (offline evaluation on labeled OOF data) wearing a
-  Track 3 label.** It is functionally identical to running a threshold/budget sweep — useful, and
-  fine to keep — but it must be re-labeled as Offline Evaluation output, not Production Inference
-  Simulation output, until it is rewritten to consume genuinely unlabeled batches and stop
-  computing labeled metrics. See "Known code-level issues" below; not fixed in this change.
+- **Current state: resolved for `dataset_h` via a SPLIT, not a rewrite-in-place.**
+  `scripts/run_batch_simulation.py` (the script formerly positioned as this track, despite
+  actually being Track 1 logic — see below) has been renamed to `scripts/run_offline_batch_eval.py`
+  and re-labeled as what it actually is: a labeled OOF threshold/budget replay
+  (`data/features/meta_dataset.parquet` **with `Response`**, `metrics_from_labels`/`simulate_batches`
+  computing real `recall`/`precision`/`tp`/`fp`/`fn`/`tn`). It is no longer wired into
+  `scripts/run_full_system.py`'s "production" stage and is no longer described as part of the
+  "Production Pipeline" in `README.md`. It remains useful as a standalone Track 1 tool — a
+  threshold/budget sweep replayed batch-by-batch — and its output
+  (`outputs/batch_simulation_summary.json`, quoted in `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md`
+  §8) is now explicitly labeled there as Track 1 output, not production output.
+
+  The genuinely label-free replacement is `scripts/run_production_inference.py` (new,
+  `dataset_h`-only — the approved candidate model): it consumes
+  `data/features/test_dataset_h.parquet` (built by `scripts/build_test_dataset_h.py`, the
+  fingerprint-validated, `Response`-free feature contract), scores it with
+  `models/dataset_h_model.pkl`, and emits exactly this track's spec — predictions/risk scores,
+  batch stats, score distributions, `batch_id`/`cycle_id`/timestamp — with zero MCC/precision/
+  recall/accuracy/confusion-matrix/TP/FP/TN/FN anywhere, by construction (grep-verified). It is
+  now wired into `scripts/run_full_system.py`'s "production" stage in place of the old script.
+  `batch_id`/`cycle_id` state-machine semantics follow `tasks.md`'s documented contract (batch_id
+  resets per cycle, cycle_id increments on wraparound; a separate `run_seq` field is the
+  lifetime-monotonic counter).
+
+  **Not yet done** (separate follow-up, not this change): S3 upload of Track 3's per-batch
+  partitioned output (`scripts/run_full_system.py`'s S3 step still only uploads the decision
+  summary and drift report); a dashboard Production Monitoring view (View A below) rendering
+  Track 3's output; `scripts/run_drift_monitoring.py` is still Track-1-shaped (reads
+  `meta_dataset.parquet` with `Response`) and was not touched by this change — it has the same
+  mislabeling pattern this section used to describe, just not yet addressed for the monitoring
+  script specifically.
 
 ---
 
@@ -141,7 +158,7 @@ Monitoring view backed by unlabeled batch output once Track 3 actually produces 
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
 | Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
-| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Mislabeled**: `run_batch_simulation.py` exists but runs Track 1 logic (supervised metrics on labeled `Response`) under a Track 3 name |
+| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. Still open: S3 upload of Track 3's partitioned output, and Dashboard View A (next row) |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Does not exist** in `apps/streamlit_dashboard/app.py` |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
 
@@ -181,20 +198,20 @@ production/dashboard-adjacent context into one of three buckets:
 These are implied by the audit above and by `docs/production_readiness_audit.md` — listed for
 follow-up, not actioned here:
 
-1. `run_batch_simulation.py` / `src/inference/decision_engine.py::metrics_from_labels` compute
-   supervised metrics on labeled data inside what's billed as the production/batch-simulation
-   path. Needs to either (a) be relabeled as Track 1 / Offline Evaluation tooling, or (b) be
-   rewritten to take genuinely unlabeled batches and drop the labeled-metric computation entirely
-   so it actually satisfies Track 3.
+1. **RESOLVED** (option (a): relabeled, plus a real Track 3 was also built — option (b) for a
+   new script, not a rewrite of the old one). `run_batch_simulation.py` is now
+   `scripts/run_offline_batch_eval.py`, honestly Track 1. `scripts/run_production_inference.py`
+   is the new, genuinely label-free Track 3 (dataset_h only). See the Track 3 section above.
 2. `apps/streamlit_dashboard/app.py` has no Production Monitoring view (View A) and no rendering
    of the existing Evidently drift output; its single view's naming (`live_df`,
-   `load_scoring_data`) implies live data when the source is labeled OOF data.
-3. `docs/architecture.md`'s "Production Architecture" diagram needs a node-level note (or a
-   second diagram) distinguishing the label-dependent decision-analytics path from a genuinely
-   label-free production path.
-4. `README.md` and `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` need their "Production
-   Pipeline"/"production decision system" framing split so that View-B/Track-1-sourced numbers
-   are clearly attributed, separately from any future genuinely label-free Track 3 output.
+   `load_scoring_data`) implies live data when the source is labeled OOF data. **Still open.**
+3. **Partially resolved.** `docs/architecture.md`'s "Production Architecture" diagram now has a
+   text note distinguishing the label-dependent path from Track 3, but the diagram itself hasn't
+   been redrawn with a Track 3 node.
+4. **Partially resolved.** `README.md`'s "Production Pipeline" section and
+   `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` §8 now correctly attribute the labeled
+   Track-1-sourced numbers and point to the new Track 3 script; the dashboard split itself
+   (item 2) is still open.
 5. Track 2 (Kaggle submission) now has `scripts/generate_submission.py`, but needs (a) a
    test-side feature-engineering script analogous to `build_dataset_{baseline,g,h}.py`, (b)
    persisted OOF-safe rate-lookup tables so `dataset_g`/`dataset_h`/`meta_model` features can be
