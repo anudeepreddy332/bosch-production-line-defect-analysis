@@ -113,18 +113,23 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
 
 ## Dashboard: two views, not one
 
-### View A — Production Monitoring View (target state — not yet built)
+### View A — Production Monitoring View
 
 - Uses unlabeled production-like batches.
 - Shows: predictions, risk scores, batch counts, score distributions, data quality, drift,
   throughput, latest batch/cycle, top risky parts.
 - **Must NOT show** MCC, precision, recall, accuracy, TP, FP, TN, FN, or a confusion matrix,
   because production/test batches are unlabeled.
-- **Current state: does not exist.** `apps/streamlit_dashboard/app.py` has no section that loads
-  unlabeled batches, and no drift/data-quality section at all — a `grep` for `drift`/`evidently`
-  in that file returns zero matches, even though `scripts/run_drift_monitoring.py` already
-  produces `outputs/monitoring/evidently_summary.json` + `.html`. The Evidently output is
-  generated but never rendered in the dashboard.
+- **Current state: exists for Track 3's predictions/risk-score output.**
+  `apps/streamlit_dashboard/app.py`'s new "Production Monitoring (Track 3)" page lists and
+  concatenates every `predictions/cycle=*/batch=*/predictions.parquet` object in S3, runtime-
+  asserts the result has no `Response` column, and renders only label-free panels (total
+  predictions, latest cycle/batch/run_seq, flagged/auto-reject/manual-inspect counts, a risk-score
+  histogram, batch growth/cumulative-predictions, and a top-100-by-risk-score table) — no
+  supervised metric anywhere on the page. **Still open:** drift/data-quality rendering — a `grep`
+  for `drift`/`evidently` in that file still returns zero matches, even though
+  `scripts/run_drift_monitoring.py` already produces `outputs/monitoring/evidently_summary.json` +
+  `.html`; that output is generated but still never rendered in the dashboard.
 
 ### View B — Offline Evaluation / Decision Analysis View (this is what exists today)
 
@@ -133,7 +138,7 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   confusion matrix, inspection budget, and cost trade-offs change.
 - This is allowed because it is not production inference — it is a model-evaluation and
   decision-policy analysis tool.
-- **Current state: this is the entirety of the existing dashboard**, just not labeled as such.
+- **Current state: still every other page in the dashboard**, mostly not labeled as such.
   Every section in `apps/streamlit_dashboard/app.py` (Threshold Explorer, Inspection Budget
   Simulator, Recall at Fixed Precision, Cost Simulator, Model Insights, Failure Analysis) loads
   `meta_dataset.parquet` joined to `oof_predictions_final.parquet` — both labeled, both
@@ -142,15 +147,17 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   - The loader function is named `load_scoring_data()` and its result is assigned to a variable
     named `live_df` throughout (e.g. `apps/streamlit_dashboard/app.py:274,427,475,497`) —
     `live_df` is a misleading name for labeled OOF data.
-  - Nothing in the UI is labeled "Offline Evaluation" or "Decision Analysis" — a user opening the
-    dashboard cannot tell from the UI that they are looking at labeled validation data rather
-    than live production scores.
+  - These pages still aren't individually labeled "Offline Evaluation" or "Decision Analysis" in
+    the UI; a one-line top-of-page caption now states that every page except "Production
+    Monitoring (Track 3)" uses labeled OOF data, but the per-page naming/labeling cleanup below is
+    still open.
 
-**Per the user's explicit instruction for this change: do not refactor the dashboard now.** The
-work needed is: (1) relabel existing sections as the Offline Evaluation / Decision Analysis view,
-(2) rename `live_df` to something like `oof_eval_df`, (3) add a new, separate Production
-Monitoring view backed by unlabeled batch output once Track 3 actually produces label-free output,
-(4) wire the existing Evidently HTML/JSON into that new view. None of this is done in this change.
+**Per the user's explicit instruction for the original change: do not refactor the dashboard
+beyond what's needed to add View A.** Remaining work: (1) fully relabel existing sections as the
+Offline Evaluation / Decision Analysis view (today there's only the one top-level caption), (2)
+rename `live_df` to something like `oof_eval_df`, (3) **done** — a new, separate Production
+Monitoring (Track 3) page now exists, backed by Track 3's real label-free S3 output, (4) wire the
+existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4) remain open.
 
 ---
 
@@ -160,8 +167,8 @@ Monitoring view backed by unlabeled batch output once Track 3 actually produces 
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
 | Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
-| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. S3 upload of Track 3's partitioned output is now wired (append-only, upload-then-advance). Still open: Dashboard View A (next row) |
-| Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Does not exist** in `apps/streamlit_dashboard/app.py` |
+| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. S3 upload of Track 3's partitioned output is wired (append-only, upload-then-advance), and Dashboard View A (next row) now renders it. Still open: drift in the dashboard |
+| Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Exists for predictions/risk-scores** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page (label-free, verified no `Response`/no supervised metrics). Still open: drift/data-quality rendering (Evidently output exists but isn't wired into this view) |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
 
 ---
@@ -204,16 +211,18 @@ follow-up, not actioned here:
    new script, not a rewrite of the old one). `run_batch_simulation.py` is now
    `scripts/run_offline_batch_eval.py`, honestly Track 1. `scripts/run_production_inference.py`
    is the new, genuinely label-free Track 3 (dataset_h only). See the Track 3 section above.
-2. `apps/streamlit_dashboard/app.py` has no Production Monitoring view (View A) and no rendering
-   of the existing Evidently drift output; its single view's naming (`live_df`,
-   `load_scoring_data`) implies live data when the source is labeled OOF data. **Still open.**
+2. **Partially resolved.** `apps/streamlit_dashboard/app.py` now has a Production Monitoring
+   (Track 3) view (View A), label-free and backed by real S3 output. **Still open:** no rendering
+   of the existing Evidently drift output in either view; the View B pages' naming (`live_df`,
+   `load_scoring_data`) still implies live data when the source is labeled OOF data (only a single
+   top-of-page caption distinguishes the views so far).
 3. **Partially resolved.** `docs/architecture.md`'s "Production Architecture" diagram now has a
    text note distinguishing the label-dependent path from Track 3, but the diagram itself hasn't
    been redrawn with a Track 3 node.
 4. **Partially resolved.** `README.md`'s "Production Pipeline" section and
    `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` §8 now correctly attribute the labeled
    Track-1-sourced numbers and point to the new Track 3 script; the dashboard split itself
-   (item 2) is still open.
+   (item 2) is now partially resolved too, but the per-page View B relabel/rename is still open.
 5. Track 2 (Kaggle submission) now has `scripts/generate_submission.py`, but needs (a) a
    test-side feature-engineering script analogous to `build_dataset_{baseline,g,h}.py`, (b)
    persisted OOF-safe rate-lookup tables so `dataset_g`/`dataset_h`/`meta_model` features can be
@@ -222,7 +231,8 @@ follow-up, not actioned here:
 6. `CLAUDE.md`'s claim that "the dashboard and decision-system code already enforce this split"
    should be revisited once 1–2 are addressed, since it currently overstates the present state.
 
-None of these are implemented or refactored as part of this change, per explicit instruction.
+Items 1 and 2 have since been addressed (in part or fully) in follow-up changes described above;
+3–6 remain open, per explicit scope limits on each of those changes.
 
 ---
 
