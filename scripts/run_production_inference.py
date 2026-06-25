@@ -32,6 +32,15 @@ new cycle, `cycle_id` increments on wraparound. A separate `run_seq` field is a
 lifetime-global monotonic counter (never resets) for unambiguous ordering across the
 whole run history -- it is intentionally a distinct field rather than overloading
 batch_id with two meanings.
+
+After the local parquet is written, the same batch is uploaded to S3 (per `tasks.md`
+TASK 4) at the partitioned, append-only key
+`predictions/cycle={cycle_id}/batch={batch_id}/predictions.parquet`, mirroring the local
+path. The upload is upload-then-advance: state (`dataset_h_batch_state.json`) only
+advances after the upload succeeds (or is explicitly skipped via `--no-s3`), so a failed
+upload leaves state untouched and the same batch is retried on the next invocation.
+Upload failures (existing key, credentials, network, client errors) raise and exit the
+process non-zero -- never print-and-continue.
 """
 from __future__ import annotations
 
@@ -53,6 +62,7 @@ sys.path.insert(0, str(ROOT))  # so `from scripts...`/`from src...` resolve when
 from scripts.generate_submission import load_validated_payload, predict_proba_ensemble
 from src.inference.decision_engine import apply_hybrid, load_policy
 from src.logger import setup_logger
+from src.utils.s3_utils import BUCKET_NAME, upload_file_append_only
 
 logger = setup_logger(__name__)
 
@@ -99,6 +109,7 @@ def run_one_batch(
     output_dir: Path,
     stats_log_path: Path,
     policy_summary_path: Path | None,
+    no_s3: bool = False,
 ) -> dict:
     features_df = pd.read_parquet(features_path)
     if "Response" in features_df.columns:
@@ -154,7 +165,25 @@ def run_one_batch(
             f"is intentional reprocessing, or check the state file at {state_path}."
         )
     batch_dir.mkdir(parents=True, exist_ok=True)
-    rows_out.to_parquet(batch_path, index=False)
+    tmp_path = batch_dir / f"{batch_path.name}.tmp"
+    rows_out.to_parquet(tmp_path, index=False)
+
+    # Upload-then-advance: batch_path (the append-only-guarded final path) is only
+    # created by the rename below, which only runs once the upload has succeeded or
+    # been explicitly skipped. If upload_file_append_only raises, tmp_path is left
+    # behind but batch_path never exists, so the FileExistsError guard above does not
+    # block retrying this exact same pending batch on the next invocation -- and state
+    # (written further below) is never reached, so it stays unchanged too.
+    s3_key = f"predictions/cycle={cycle_id}/batch={batch_id}/predictions.parquet"
+    if no_s3:
+        s3_uploaded = False
+        logger.info("S3 upload skipped (--no-s3): local-only batch at %s", tmp_path)
+    else:
+        upload_file_append_only(str(tmp_path), s3_key)
+        s3_uploaded = True
+        logger.info("Uploaded batch to s3://%s/%s", BUCKET_NAME, s3_key)
+
+    tmp_path.replace(batch_path)
 
     flagged = int(decisions.sum())
     stats_row = {
@@ -174,16 +203,10 @@ def run_one_batch(
         "model_threshold": float(payload["threshold"]),
         "reset_triggered": reset_triggered,
         "output_path": str(batch_path),
+        "s3_key": s3_key,
+        "s3_uploaded": s3_uploaded,
         **_score_distribution(pred),
     }
-
-    stats_log_path.parent.mkdir(parents=True, exist_ok=True)
-    if stats_log_path.exists():
-        hist = pd.read_csv(stats_log_path)
-        hist = pd.concat([hist, pd.DataFrame([stats_row])], ignore_index=True)
-    else:
-        hist = pd.DataFrame([stats_row])
-    hist.to_csv(stats_log_path, index=False)
 
     next_pointer = 0 if reset_triggered else end
     next_cycle_id = cycle_id + 1 if reset_triggered else cycle_id
@@ -200,8 +223,19 @@ def run_one_batch(
         "last_batch_end": end,
         "last_scored_at_utc": scored_at_utc,
     }
+    # State (the critical resume pointer) advances before the stats log (observability
+    # only) is written, so a stats-write failure after a successful upload + local
+    # finalization cannot leave this batch stuck unable to advance.
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state_out, indent=2))
+
+    stats_log_path.parent.mkdir(parents=True, exist_ok=True)
+    if stats_log_path.exists():
+        hist = pd.read_csv(stats_log_path)
+        hist = pd.concat([hist, pd.DataFrame([stats_row])], ignore_index=True)
+    else:
+        hist = pd.DataFrame([stats_row])
+    hist.to_csv(stats_log_path, index=False)
 
     logger.info(
         "Scored batch cycle=%d batch=%d run_seq=%d rows=%d flagged=%d (%.4f%%) -> %s",
@@ -232,6 +266,15 @@ def main() -> None:
         default=None,
         help="Defaults to src.inference.decision_engine.DEFAULT_POLICY_SUMMARY_PATH if not set.",
     )
+    parser.add_argument(
+        "--no-s3",
+        action="store_true",
+        help=(
+            "Skip the S3 upload and write the partitioned batch locally only. Default is "
+            "S3-enabled (upload-then-advance), matching the rest of the production pipeline's "
+            "existing S3 behavior. Use this for local-only smoke testing."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.features_path.exists():
@@ -239,6 +282,9 @@ def main() -> None:
             f"{args.features_path} does not exist. Run scripts/build_test_dataset_h.py first "
             f"to build the unlabeled dataset_h feature contract."
         )
+
+    if args.no_s3:
+        print("[S3] --no-s3 set: upload will be SKIPPED, local-only run.")
 
     stats_row = run_one_batch(
         features_path=args.features_path,
@@ -248,6 +294,7 @@ def main() -> None:
         output_dir=args.output_dir,
         stats_log_path=args.stats_log_path,
         policy_summary_path=args.policy_summary_path,
+        no_s3=args.no_s3,
     )
 
     print(f"cycle_id={stats_row['cycle_id']}")
@@ -257,6 +304,10 @@ def main() -> None:
     print(f"flagged_count={stats_row['flagged_count']} ({stats_row['flagged_pct']:.4f}%)")
     print(f"pred_mean={stats_row['pred_mean']:.6f}")
     print(f"output_path={stats_row['output_path']}")
+    if stats_row["s3_uploaded"]:
+        print(f"s3_key={stats_row['s3_key']}")
+    else:
+        print(f"s3_upload=skipped (--no-s3); would-be s3_key={stats_row['s3_key']}")
 
 
 if __name__ == "__main__":

@@ -99,13 +99,15 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   resets per cycle, cycle_id increments on wraparound; a separate `run_seq` field is the
   lifetime-monotonic counter).
 
-  **Not yet done** (separate follow-up, not this change): S3 upload of Track 3's per-batch
-  partitioned output (`scripts/run_full_system.py`'s S3 step still only uploads the decision
-  summary and drift report); a dashboard Production Monitoring view (View A below) rendering
-  Track 3's output; `scripts/run_drift_monitoring.py` is still Track-1-shaped (reads
-  `meta_dataset.parquet` with `Response`) and was not touched by this change — it has the same
-  mislabeling pattern this section used to describe, just not yet addressed for the monitoring
-  script specifically.
+  **S3 upload of Track 3's partitioned output is now wired** (`src/utils/s3_utils.py`'s
+  `upload_file_append_only`/`key_exists`, called from `scripts/run_production_inference.py`
+  after the local parquet write, before state advances — upload-then-advance, failure-loud,
+  never overwrites an existing key; `--no-s3` skips it for local-only runs). **Still not yet
+  done** (separate follow-up, not this change): a dashboard Production Monitoring view (View A
+  below) rendering Track 3's output; `scripts/run_drift_monitoring.py` is still Track-1-shaped
+  (reads `meta_dataset.parquet` with `Response`) and was not touched by this change — it has the
+  same mislabeling pattern this section used to describe, just not yet addressed for the
+  monitoring script specifically.
 
 ---
 
@@ -158,7 +160,7 @@ Monitoring view backed by unlabeled batch output once Track 3 actually produces 
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
 | Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
-| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. Still open: S3 upload of Track 3's partitioned output, and Dashboard View A (next row) |
+| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. S3 upload of Track 3's partitioned output is now wired (append-only, upload-then-advance). Still open: Dashboard View A (next row) |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Does not exist** in `apps/streamlit_dashboard/app.py` |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
 
