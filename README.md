@@ -122,6 +122,14 @@ streamlit run apps/streamlit_dashboard/app.py
 
 ---
 
+## 📚 Runbooks
+
+Practical, command-level guides for local setup, each of the three tracks, the dashboard, Docker,
+AWS S3, and EC2 deployment — including current known gaps — live in
+[`docs/runbooks/`](docs/runbooks/README.md).
+
+---
+
 ## 📈 Dashboard Features
 
 * Threshold tuning
