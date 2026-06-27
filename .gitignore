@@ -73,3 +73,10 @@ agent.md
 system_design.md
 execution_rules.md
 tasks.md
+
+# Claude Code / agent session files (not project artifacts)
+.claude/
+CLAUDE.md
+bosch_agent.md
+chatgpt_handoff
+docs/agent_memory/
