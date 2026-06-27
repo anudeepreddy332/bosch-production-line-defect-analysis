@@ -16,7 +16,9 @@ RUN pip install --no-cache-dir \
     plotly \
     pandas \
     numpy \
-    pyarrow
+    pyarrow \
+    boto3 \
+    python-dotenv
 
 EXPOSE 8501
 

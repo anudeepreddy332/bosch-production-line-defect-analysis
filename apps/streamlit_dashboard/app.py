@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -7,24 +8,53 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT))
 
 
-import boto3
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from src.evaluation.decision_system import CostConfig, build_decision_table, summarize_operating_points
+from src.utils.s3_utils import BUCKET_NAME, s3
 from io import BytesIO
-
-AWS_BUCKET = "bosch-ml-production-anudeep-193116635897-ap-south-2-an"
-AWS_REGION = "ap-south-2"
-
-s3 = boto3.client("s3", region_name=AWS_REGION)
 
 
 def load_parquet_from_s3(key: str):
-    obj = s3.get_object(Bucket=AWS_BUCKET, Key=key)
+    obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
     return pd.read_parquet(BytesIO(obj["Body"].read()))
+
+
+# Track 3 (label-free production batch inference): cycle/batch-partitioned output written
+# by scripts/run_production_inference.py, never containing a Response column by construction.
+PRODUCTION_PREFIX = "predictions/"
+_PRODUCTION_KEY_RE = re.compile(r"^predictions/cycle=\d+/batch=\d+/predictions\.parquet$")
+
+
+def list_production_batch_keys() -> list[str]:
+    keys: list[str] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=BUCKET_NAME, Prefix=PRODUCTION_PREFIX):
+        for obj in page.get("Contents", []):
+            if _PRODUCTION_KEY_RE.match(obj["Key"]):
+                keys.append(obj["Key"])
+    return sorted(keys)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_production_batches() -> pd.DataFrame:
+    keys = list_production_batch_keys()
+    if not keys:
+        return pd.DataFrame()
+
+    frames = [load_parquet_from_s3(key) for key in keys]
+    df = pd.concat(frames, ignore_index=True)
+
+    if "Response" in df.columns:
+        raise RuntimeError(
+            "Track 3 production data unexpectedly contains a Response column -- this view "
+            "is label-free by contract and refuses to render data that could be labeled."
+        )
+
+    return df.sort_values("run_seq", kind="mergesort").reset_index(drop=True)
 
 
 COLOR_RECALL = "#2ca02c"
@@ -34,6 +64,10 @@ COLOR_COST = "#d62728"
 st.set_page_config(page_title="Bosch Decision Dashboard", layout="wide")
 st.title("Bosch Failure Decision System")
 st.caption("Production-focused decision analytics for failure detection under inspection and cost constraints")
+st.caption(
+    "Note: every page below except \"Production Monitoring (Track 3)\" is an Offline "
+    "Evaluation / Decision Analysis view over labeled OOF validation data, not live production scores."
+)
 
 
 @st.cache_data(show_spinner=False)
@@ -267,6 +301,7 @@ nav = st.sidebar.radio(
         "Cost Simulator",
         "Model Insights",
         "Failure Analysis",
+        "Production Monitoring (Track 3)",
     ],
 )
 
@@ -545,3 +580,85 @@ elif nav == "Failure Analysis":
         }
     )
     st.dataframe(compare, use_container_width=True, hide_index=True)
+
+elif nav == "Production Monitoring (Track 3)":
+    st.subheader("Production Monitoring (Track 3)")
+    st.info(
+        "Label-free view of real, unlabeled Track 3 batch inference output "
+        "(scripts/run_production_inference.py), read directly from "
+        f"s3://{BUCKET_NAME}/{PRODUCTION_PREFIX}cycle=*/batch=*/predictions.parquet. "
+        "This page never shows MCC, precision, recall, accuracy, or a confusion matrix -- "
+        "production batches are unlabeled by construction."
+    )
+
+    if st.button("🔄 Refresh from S3"):
+        load_production_batches.clear()
+        st.rerun()
+
+    prod_df = load_production_batches()
+
+    if prod_df.empty:
+        st.warning(
+            f"No production batches found yet under s3://{BUCKET_NAME}/{PRODUCTION_PREFIX}"
+            "cycle=*/batch=*/predictions.parquet. Run scripts/run_production_inference.py "
+            "to generate the first batch."
+        )
+    else:
+        latest = prod_df.sort_values("run_seq").iloc[-1]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Predictions", f"{len(prod_df):,}")
+        c2.metric("Latest Cycle", int(latest["cycle_id"]))
+        c3.metric("Latest Batch", int(latest["batch_id"]))
+        c4.metric("Latest run_seq", int(latest["run_seq"]))
+        st.caption(f"Latest scored_at_utc: {latest['scored_at_utc']}")
+
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Flagged (decision=1)", f"{int(prod_df['decision'].sum()):,}")
+        d2.metric("Auto-Reject", f"{int(prod_df['auto_reject'].sum()):,}")
+        d3.metric("Manual Inspect", f"{int(prod_df['manual_inspect'].sum()):,}")
+
+        st.subheader("Risk Score Distribution")
+        fig_risk = go.Figure()
+        fig_risk.add_trace(
+            go.Histogram(x=prod_df["risk_score"], nbinsx=100, marker_color=COLOR_PRECISION, name="Risk Score")
+        )
+        fig_risk.update_layout(xaxis_title="Risk Score", yaxis_title="Number of Parts")
+        st.plotly_chart(fig_risk, use_container_width=True)
+
+        st.subheader("Batch Growth")
+        batch_growth = (
+            prod_df.groupby(["run_seq", "cycle_id", "batch_id"], as_index=False)
+            .agg(
+                rows=("Id", "size"),
+                flagged=("decision", "sum"),
+                scored_at_utc=("scored_at_utc", "first"),
+            )
+            .sort_values("run_seq")
+            .reset_index(drop=True)
+        )
+        batch_growth["cumulative_rows"] = batch_growth["rows"].cumsum()
+
+        fig_growth = go.Figure()
+        fig_growth.add_trace(
+            go.Scatter(
+                x=batch_growth["run_seq"],
+                y=batch_growth["cumulative_rows"],
+                mode="lines+markers",
+                name="Cumulative Predictions",
+                line={"color": COLOR_RECALL},
+            )
+        )
+        fig_growth.update_layout(xaxis_title="run_seq", yaxis_title="Cumulative Predictions")
+        st.plotly_chart(fig_growth, use_container_width=True)
+
+        st.dataframe(batch_growth, use_container_width=True, hide_index=True)
+
+        st.subheader("Top 100 Risky Parts")
+        top_risky = (
+            prod_df[["Id", "risk_score", "decision", "cycle_id", "batch_id", "scored_at_utc"]]
+            .sort_values("risk_score", ascending=False)
+            .head(100)
+            .reset_index(drop=True)
+        )
+        st.dataframe(top_risky, use_container_width=True, hide_index=True)
