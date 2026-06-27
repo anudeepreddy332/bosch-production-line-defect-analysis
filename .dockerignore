@@ -1,0 +1,20 @@
+# Keeps the Docker build context small. Without this file, `docker build`/`docker compose
+# build` sends the entire repo (~17GB, mostly data/raw) to the daemon before any build step
+# runs. None of the excluded paths below are needed inside the API or dashboard images --
+# both services read data/outputs via the docker-compose volume mounts (./data:/app/data,
+# ./outputs:/app/outputs) at runtime, not from what COPY . /app bakes into the image.
+
+.git
+data/raw
+data/processed
+.env
+.claude
+
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
+.venv
+venv
+*.egg-info
+.pytest_cache

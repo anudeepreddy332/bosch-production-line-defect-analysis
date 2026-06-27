@@ -4,8 +4,10 @@
 runbook. Every command below is derived from the verified local/Docker behavior documented in the
 other runbooks ([`local_setup.md`](local_setup.md), [`docker.md`](docker.md),
 [`aws_s3.md`](aws_s3.md)) — treat it as "should work" guidance, not a confirmed procedure. Where a
-step depends on a known gap from another runbook (Docker's missing `boto3`, the dashboard's
-hardcoded bucket/region), that dependency is called out explicitly rather than hidden.
+step depends on a gap from another runbook, that dependency is called out explicitly rather than
+hidden. As of the Docker/S3 hardening phase, the dashboard's `boto3`/credential gaps described
+below are resolved — see [`docker.md`](docker.md) and [`aws_s3.md`](aws_s3.md) for what changed
+and what's still unverified (a real EC2 instance, specifically).
 
 ## Instance prerequisites
 
@@ -63,7 +65,6 @@ Never commit this file; `.gitignore` already excludes `.env`.
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install boto3   # not in requirements.txt today -- see local_setup.md known gap
 ```
 
 or via conda if you have it installed:
@@ -71,8 +72,10 @@ or via conda if you have it installed:
 ```bash
 conda env create -f environment.yml
 conda activate bosch
-pip install boto3
 ```
+
+`boto3` is included in both `requirements.txt` and `environment.yml` as of the Docker/S3
+hardening phase — no separate install step needed.
 
 ## Running batch inference
 
@@ -109,10 +112,12 @@ streamlit run apps/streamlit_dashboard/app.py --server.port 8501 --server.addres
 Run each under `tmux` for a quick manual deployment, or wrap each in its own `systemd` service for
 anything persistent (restart-on-crash, log capture via journald).
 
-**Via Docker:** only after the gaps in [`docker.md`](docker.md) are actually fixed — as currently
-built, the dashboard container will fail on `import boto3`. The API container has no such
-dependency and should work via `docker-compose up api` alone today, but this combination (API via
-Docker, dashboard run directly) has not been tested either.
+**Via Docker:** `docker compose up --build` now builds both containers successfully and the
+dashboard's `boto3 import → src.utils.s3_utils` chain has been verified working inside the built
+image (host-side verification — see [`docker.md`](docker.md) for exact commands/output). This was
+**not** re-verified specifically on an EC2 instance; the underlying Docker behavior should be
+identical, but EC2-specific factors (instance role propagation into the container, network
+reachability to S3 from inside Docker's bridge network) have not been tested there.
 
 ## Security group ports
 
@@ -140,10 +145,11 @@ written and tested against this specific bucket's actual usage on this branch.
 
 | Step | Status |
 |---|---|
-| Local Python env setup, `boto3` gap | Verified (see [`local_setup.md`](local_setup.md)) |
+| Local Python env setup (`boto3` included in `requirements.txt`/`environment.yml`) | Verified (see [`local_setup.md`](local_setup.md)) |
 | `scripts/run_production_inference.py` batch scoring, append-only S3 upload | Verified locally (see [`track3_production_inference.md`](track3_production_inference.md)) |
 | FastAPI `/health`/`/predict`/`/batch_predict` | Verified locally, not specifically on EC2 |
 | Streamlit dashboard, both views | Verified locally, not specifically on EC2 |
-| `docker-compose up` for the API service | Expected to work (no S3 dependency); not re-verified in this runbook |
-| `docker-compose up` for the dashboard service | **Expected to fail** as currently built — see [`docker.md`](docker.md) |
-| Everything EC2-specific in this document (instance setup, IAM role, systemd/cron scheduling, security groups) | **Planned only — not provisioned or tested** |
+| `docker compose build` + `docker compose up api` | Verified locally (see [`docker.md`](docker.md)) |
+| Dashboard container's `boto3`/S3-import chain (`docker compose run --rm dashboard python -c "..."`) | Verified locally (see [`docker.md`](docker.md)) |
+| Full `docker compose up dashboard` + loading the UI in a real browser | **Not verified** — see [`docker.md`](docker.md) "Validation performed" for the exact scope of what was and wasn't checked |
+| Everything EC2-specific in this document (instance setup, IAM role, systemd/cron scheduling, security groups, an instance role's actual S3 access from inside a container) | **Planned only — not provisioned or tested** |

@@ -15,6 +15,7 @@ dependencies:
   - fsspec
   - statsmodels
   - python-dotenv
+  - boto3
   - streamlit
   - plotly
   - fastapi

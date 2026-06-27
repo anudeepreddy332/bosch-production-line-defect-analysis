@@ -8,23 +8,18 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT))
 
 
-import boto3
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from src.evaluation.decision_system import CostConfig, build_decision_table, summarize_operating_points
+from src.utils.s3_utils import BUCKET_NAME, s3
 from io import BytesIO
-
-AWS_BUCKET = "bosch-ml-production-anudeep-193116635897-ap-south-2-an"
-AWS_REGION = "ap-south-2"
-
-s3 = boto3.client("s3", region_name=AWS_REGION)
 
 
 def load_parquet_from_s3(key: str):
-    obj = s3.get_object(Bucket=AWS_BUCKET, Key=key)
+    obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
     return pd.read_parquet(BytesIO(obj["Body"].read()))
 
 
@@ -37,7 +32,7 @@ _PRODUCTION_KEY_RE = re.compile(r"^predictions/cycle=\d+/batch=\d+/predictions\.
 def list_production_batch_keys() -> list[str]:
     keys: list[str] = []
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=AWS_BUCKET, Prefix=PRODUCTION_PREFIX):
+    for page in paginator.paginate(Bucket=BUCKET_NAME, Prefix=PRODUCTION_PREFIX):
         for obj in page.get("Contents", []):
             if _PRODUCTION_KEY_RE.match(obj["Key"]):
                 keys.append(obj["Key"])
@@ -591,7 +586,7 @@ elif nav == "Production Monitoring (Track 3)":
     st.info(
         "Label-free view of real, unlabeled Track 3 batch inference output "
         "(scripts/run_production_inference.py), read directly from "
-        f"s3://{AWS_BUCKET}/{PRODUCTION_PREFIX}cycle=*/batch=*/predictions.parquet. "
+        f"s3://{BUCKET_NAME}/{PRODUCTION_PREFIX}cycle=*/batch=*/predictions.parquet. "
         "This page never shows MCC, precision, recall, accuracy, or a confusion matrix -- "
         "production batches are unlabeled by construction."
     )
@@ -604,7 +599,7 @@ elif nav == "Production Monitoring (Track 3)":
 
     if prod_df.empty:
         st.warning(
-            f"No production batches found yet under s3://{AWS_BUCKET}/{PRODUCTION_PREFIX}"
+            f"No production batches found yet under s3://{BUCKET_NAME}/{PRODUCTION_PREFIX}"
             "cycle=*/batch=*/predictions.parquet. Run scripts/run_production_inference.py "
             "to generate the first batch."
         )

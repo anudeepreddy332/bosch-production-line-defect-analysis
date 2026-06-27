@@ -17,18 +17,10 @@ conda activate bosch
 pip install -r requirements.txt
 ```
 
-**Known gap: `boto3` is not declared in either `environment.yml` or `requirements.txt`**, even
-though `src/utils/s3_utils.py` and `apps/streamlit_dashboard/app.py` both `import boto3`
-unconditionally. If you only installed from one of the files above, install it separately:
-
-```bash
-pip install boto3
-```
-
-Anything that touches S3 (Track 3's upload, the dashboard's Production Monitoring page, `aws_s3.md`'s
-examples) will raise `ModuleNotFoundError: No module named 'boto3'` until you do this. This is a
-real gap in the committed dependency manifests, not a documentation omission — see
-[`docker.md`](docker.md) for the same gap inside the Docker image.
+`boto3` is included in both `environment.yml` and `requirements.txt` (added during the Docker/S3
+hardening phase), so either install path above already gives you everything Track 3's upload,
+`src/utils/s3_utils.py`, and the dashboard's Production Monitoring page need for S3 access — no
+separate install step required.
 
 ## 2. Required local files/artifacts
 
@@ -56,12 +48,11 @@ AWS_REGION=<bucket region, e.g. ap-south-2>
 AWS_BUCKET_NAME=<your bucket name>
 ```
 
-**Asymmetry to be aware of:** `apps/streamlit_dashboard/app.py` does **not** read these — it
-hardcodes its own `AWS_BUCKET`/`AWS_REGION` constants and authenticates via boto3's default
-credential chain (environment variables, `~/.aws/credentials`, or an instance role), not via
-`.env`/`AWS_ACCESS_KEY`/`AWS_SECRET_KEY`. If the dashboard's S3 calls fail with a credentials
-error even though `.env` is set correctly, this is why — see [`aws_s3.md`](aws_s3.md) and
-[`troubleshooting.md`](troubleshooting.md).
+`apps/streamlit_dashboard/app.py` now imports its S3 client and bucket name directly from
+`src.utils.s3_utils` (`from src.utils.s3_utils import BUCKET_NAME, s3`), so these four `.env`
+variables are the single source of truth for S3 access across scripts and the dashboard alike —
+there is no separate hardcoded bucket/region or credential path to worry about. See
+[`aws_s3.md`](aws_s3.md) and [`troubleshooting.md`](troubleshooting.md) if S3 calls still fail.
 
 Never commit `.env`. It is already in `.gitignore`.
 

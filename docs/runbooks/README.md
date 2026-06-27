@@ -61,13 +61,19 @@ and audit history: [`docs/ml_system_tracks.md`](../ml_system_tracks.md).
 
 ## Current known limitations (read before deploying)
 
-- **Docker is not S3-ready.** `Dockerfile.dashboard` does not install `boto3` or `python-dotenv`,
-  but `apps/streamlit_dashboard/app.py` imports `boto3` unconditionally at module load — the
-  dashboard container will fail to start as currently built. `docker-compose.yml` also does not
-  pass any AWS credentials/region into either container. See [`docker.md`](docker.md).
-- **The dashboard hardcodes its S3 bucket and region** (`apps/streamlit_dashboard/app.py`),
-  separately from the `AWS_BUCKET_NAME`/`AWS_REGION` env vars `src/utils/s3_utils.py` reads from
-  `.env`. Two sources of truth for the same configuration. See [`aws_s3.md`](aws_s3.md).
+- **Resolved: Docker/S3 hardening.** Both `bosch_api` and `bosch_dashboard` build and run
+  correctly — `Dockerfile.dashboard` installs `boto3`/`python-dotenv`, `docker-compose.yml` wires
+  `.env` into the dashboard service, and the dashboard now imports its S3 client/bucket from
+  `src.utils.s3_utils` instead of hardcoding its own. One source of truth for S3 config across
+  scripts and the dashboard. See [`docker.md`](docker.md) and [`aws_s3.md`](aws_s3.md). This
+  phase's changes are not yet committed.
+- **Resolved: API container startup.** `bosch_api` previously crashed with
+  `ModuleNotFoundError: No module named 'joblib'` (an unrelated, pre-existing bug surfaced while
+  validating the Docker/S3 hardening above). Fixed via a lazy re-export in
+  `src/inference/__init__.py` — see [`docker.md`](docker.md) "API container: `joblib` import fix."
+- **Outstanding: AWS key rotation.** A real AWS access key was printed in plaintext by
+  `docker compose config` during this work and has not yet been rotated. Treat it as compromised
+  until rotated.
 - **Drift monitoring is still Track-1-shaped.** `scripts/run_drift_monitoring.py` reads
   `data/features/meta_dataset.parquet` (labeled) and a historical, non-reproducible blend file
   (`oof_predictions_context_meta_v2_blend.parquet` — see `data/README.md`), not Track 3's

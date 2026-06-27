@@ -2,8 +2,10 @@
 
 ## Required bucket / env vars
 
-`src/utils/s3_utils.py` (the canonical S3 client for `scripts/run_production_inference.py` and
-`scripts/run_full_system.py`) reads from `.env` via `python-dotenv`:
+`src/utils/s3_utils.py` is the **single, canonical S3 client** for this entire project —
+`scripts/run_production_inference.py`, `scripts/run_full_system.py`, and (as of this phase)
+`apps/streamlit_dashboard/app.py` all `import` its `s3` client and `BUCKET_NAME` constant rather
+than building their own. It reads from `.env` via `python-dotenv`:
 
 ```
 AWS_ACCESS_KEY=<access key id>
@@ -12,19 +14,31 @@ AWS_REGION=<bucket region>
 AWS_BUCKET_NAME=<bucket name>
 ```
 
-**`apps/streamlit_dashboard/app.py` does not use this.** It hardcodes its own module-level
-constants and uses boto3's default credential chain instead:
+These four variables are now the **one source of truth** for every S3-touching part of this
+project, including the dashboard. The previous duplication — the dashboard hardcoding its own
+`AWS_BUCKET`/`AWS_REGION` constants and building a separate `boto3.client(...)` on the default
+credential chain — has been removed; `app.py` now does
+`from src.utils.s3_utils import BUCKET_NAME, s3` instead. See [`docker.md`](docker.md) and
+[`dashboard.md`](dashboard.md) for what this changes in practice.
 
-```python
-AWS_BUCKET = "bosch-ml-production-anudeep-193116635897-ap-south-2-an"
-AWS_REGION = "ap-south-2"
-s3 = boto3.client("s3", region_name=AWS_REGION)
-```
-
-This is a real, currently-unresolved duplication — two sources of truth for the same bucket/region,
-two different credential mechanisms. If you change the bucket, you must change it in **both**
-places. See [`docker.md`](docker.md) and [`dashboard.md`](dashboard.md) for how this surfaces in
-practice.
+**Consequences worth knowing:**
+- **`AWS_REGION` is now required for the dashboard too.** The old hardcoded `"ap-south-2"`
+  fallback is gone. If `.env`/the environment doesn't set `AWS_REGION`, the shared client passes
+  `region_name=None` to boto3, which only resolves a region from elsewhere (e.g.
+  `~/.aws/config` or an EC2 instance's configured default) if one is available — otherwise S3
+  calls will fail with a region-resolution error.
+- **If `.env` has stale or wrong explicit keys, they take precedence over a working default
+  credential chain** (e.g. an EC2 IAM instance role). `s3_utils.py` always passes whatever
+  `AWS_ACCESS_KEY`/`AWS_SECRET_KEY` it finds explicitly to `boto3.client(...)` — it does not
+  conditionally omit bad values. If you intend to rely on an instance role, `.env` must not set
+  these keys at all (not even to empty strings); simply not having the file is the safest way to
+  guarantee fallback to the default chain.
+- **IAM role / default credential chain remains fully viable** when `AWS_ACCESS_KEY`/
+  `AWS_SECRET_KEY` are absent from the environment: `os.getenv("AWS_ACCESS_KEY")` returns `None`
+  in that case, and boto3 treats `aws_access_key_id=None` as "not provided," falling through to
+  its default chain (env vars, `~/.aws/credentials`, or an EC2 instance role) — provided
+  `AWS_REGION` is still resolvable some other way. Nothing about this phase's change weakens that
+  fallback; it now also benefits the dashboard, not just the production scripts.
 
 ## Track 3 key layout
 
@@ -108,9 +122,9 @@ contains a `Response` column. See [`dashboard.md`](dashboard.md).
 - **Scope the IAM policy to the specific bucket and `predictions/`/`data/`/`outputs/` prefixes
   this project actually uses** (`s3:GetObject`, `s3:PutObject`, `s3:ListBucket`, `s3:HeadObject`)
   rather than `AmazonS3FullAccess` or account-wide access.
-- The bucket name itself (`bosch-ml-production-anudeep-193116635897-ap-south-2-an`, as hardcoded
-  in `app.py`) is not a secret — it's already committed in this repo's source. The access
-  key/secret pair is the only thing that must never be committed.
+- The bucket name itself (`bosch-ml-production-anudeep-193116635897-ap-south-2-an`) is not a
+  secret — it has been visible in this repo's source/docs throughout this project's history. The
+  access key/secret pair is the only thing that must never be committed.
 
 ## Manual recovery notes: collision / finalization edge cases
 

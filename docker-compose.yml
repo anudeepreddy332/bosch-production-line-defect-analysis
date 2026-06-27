@@ -24,6 +24,14 @@ services:
     environment:
       - PYTHONPATH=/app
       - BOSCH_PROJECT_ROOT=/app
+    # Optional: loads AWS_ACCESS_KEY/AWS_SECRET_KEY/AWS_REGION/AWS_BUCKET_NAME (the same
+    # names src/utils/s3_utils.py reads) from a local .env, which the dashboard now also
+    # depends on since it imports its S3 client from that module. `required: false` means
+    # `up` still works with no .env present (e.g. on an EC2 instance using an IAM role) --
+    # see docs/runbooks/aws_s3.md and docs/runbooks/ec2_deployment.md.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./:/app
       - ./data:/app/data

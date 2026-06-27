@@ -79,20 +79,17 @@ output directory before deleting anything.
 
 ## AWS credentials failure (`NoCredentialsError`, `ClientError ... 403`, `InvalidAccessKeyId`)
 
-**Where:** any boto3 call — `src/utils/s3_utils.py` (Track 3, `run_full_system.py`) or
-`apps/streamlit_dashboard/app.py` (dashboard).
+**Where:** any boto3 call — `src/utils/s3_utils.py` is the shared client used by Track 3,
+`run_full_system.py`, **and** `apps/streamlit_dashboard/app.py` (the dashboard imports
+`BUCKET_NAME`/`s3` from this same module, as of the Docker/S3 hardening phase — there is no
+longer a separate dashboard credential path).
 
-**Cause and fix depend on which client:**
-- **`s3_utils.py`** reads `AWS_ACCESS_KEY`/`AWS_SECRET_KEY`/`AWS_REGION`/`AWS_BUCKET_NAME` from
-  `.env` via `python-dotenv`. Confirm `.env` exists, is in the working directory the script is run
-  from, and has correct (non-expired, non-typo'd) values. See [`local_setup.md`](local_setup.md)
-  §3.
-- **`app.py` (dashboard)** uses boto3's **default credential chain** instead — it does not read
-  `.env` at all. Confirm `~/.aws/credentials` is set up, or `AWS_ACCESS_KEY_ID`/
-  `AWS_SECRET_ACCESS_KEY`/`AWS_DEFAULT_REGION` are exported in the shell the Streamlit process
-  runs in (note: these are *different env var names* than `s3_utils.py` uses — a `.env` correctly
-  set up for `s3_utils.py` will not, by itself, fix the dashboard). See
-  [`aws_s3.md`](aws_s3.md)'s "required bucket / env vars" section for the full asymmetry.
+**Fix:** confirm `.env` exists, is readable from wherever the process is run (working directory
+for scripts; for the dashboard inside Docker, confirm `docker-compose.yml`'s `env_file` picked it
+up), and has correct (non-expired, non-typo'd) values for `AWS_ACCESS_KEY`/`AWS_SECRET_KEY`/
+`AWS_REGION`/`AWS_BUCKET_NAME`. See [`local_setup.md`](local_setup.md) §3. If you're intentionally
+relying on an IAM role/default credential chain instead of `.env`, make sure `.env` doesn't set
+these keys at all (even to empty/wrong values) — see [`aws_s3.md`](aws_s3.md).
 
 ## Dashboard's "Production Monitoring (Track 3)" page is empty
 
@@ -102,10 +99,9 @@ output directory before deleting anything.
 **Cause, in order of likelihood:**
 1. You only ran `scripts/run_production_inference.py --no-s3` so far — local-only batches never
    reach S3, and this page only reads S3.
-2. You ran it without `--no-s3` but credentials/bucket/region are misconfigured for the
-   **dashboard's** client specifically (see the AWS-credentials entry above — this is a common
-   trap because `s3_utils.py`'s `.env` setup being correct does not guarantee the dashboard's
-   separate credential path is also correct).
+2. You ran it without `--no-s3` but `.env`'s credentials/bucket/region are wrong or missing (see
+   the AWS-credentials entry above — the dashboard shares the same `s3_utils.py` client as the
+   production scripts, so this is now a single, consistent thing to check).
 3. The 60-second cache is stale — click **"🔄 Refresh from S3"** on the page.
 
 **Fix:** run at least one batch without `--no-s3`, confirm it landed in S3 (`aws s3 ls` or the
@@ -113,18 +109,23 @@ boto3 snippet in [`aws_s3.md`](aws_s3.md)), fix dashboard credentials if needed,
 
 ## Docker dashboard container missing `boto3`
 
+**Resolved as of the Docker/S3 hardening phase** — `Dockerfile.dashboard` now installs `boto3`
+and `python-dotenv`, and `docker compose build`/`up` for the `dashboard` service has been verified
+working. The notes below describe what the symptom looked like before the fix, in case you're on
+an older checkout or a custom image that predates it.
+
 **Symptom:**
 ```
 ModuleNotFoundError: No module named 'boto3'
 ```
-immediately on `docker-compose up` for the `dashboard` service.
+immediately on `docker compose up` for the `dashboard` service.
 
-**Cause:** `Dockerfile.dashboard`'s `pip install` list doesn't include `boto3` (or
-`python-dotenv`), but `apps/streamlit_dashboard/app.py` imports `boto3` unconditionally.
+**Cause:** `Dockerfile.dashboard`'s `pip install` list didn't include `boto3`/`python-dotenv`,
+but `apps/streamlit_dashboard/app.py` imports `boto3` (transitively, via `src.utils.s3_utils`)
+unconditionally.
 
-**Fix:** this is a known, documented, **not yet fixed** gap — see [`docker.md`](docker.md) "what
-must be fixed before calling Docker production-ready." There is no workaround short of editing
-`Dockerfile.dashboard` and rebuilding the image.
+**Fix (already applied on this branch):** add `boto3`/`python-dotenv` to `Dockerfile.dashboard`'s
+pip install list and rebuild — see [`docker.md`](docker.md).
 
 ## Streamlit `S3 Load Failed: ...` (View B pages)
 
@@ -132,9 +133,9 @@ must be fixed before calling Docker production-ready." There is no workaround sh
 `meta_dataset.parquet`/`oof_predictions_final.parquet`.
 
 **Cause:** same credential/bucket-region issue as the dashboard credentials entry above, or those
-two files genuinely don't exist at the hardcoded bucket/key the dashboard expects.
+two files genuinely don't exist at the `BUCKET_NAME` configured in `.env`.
 
 **Fix:** confirm the objects exist at the expected keys (`data/features/meta_dataset.parquet`,
-`data/features/oof_predictions_final.parquet`) in the bucket `app.py` hardcodes
-(`AWS_BUCKET`/`AWS_REGION` constants near the top of the file), and that your active AWS
-credentials (default chain, not `.env`) can read them.
+`data/features/oof_predictions_final.parquet`) in the bucket named by `.env`'s `AWS_BUCKET_NAME`,
+and that the credentials in `.env` (or your default credential chain, if `.env` doesn't set
+explicit keys) can read them.

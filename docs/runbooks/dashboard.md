@@ -72,33 +72,38 @@ there.
 
 - **No drift/data-quality rendering.** `scripts/run_drift_monitoring.py` already produces
   `outputs/monitoring/evidently_summary.json` + `.html`, but neither view renders it. A `grep` for
-  `drift`/`evidently` in `apps/streamlit_dashboard/app.py` returns zero matches.
-- **Bucket/region are hardcoded** in `apps/streamlit_dashboard/app.py`
-  (`AWS_BUCKET`/`AWS_REGION` module-level constants), separate from the `.env`-driven
-  `AWS_BUCKET_NAME`/`AWS_REGION` that `src/utils/s3_utils.py` uses. Two sources of truth — see
+  `drift`/`evidently` in `apps/streamlit_dashboard/app.py` returns zero matches. Out of scope for
+  the Docker/S3 hardening phase that fixed the items below — still open.
+- **Resolved: bucket/region duplication.** The dashboard previously hardcoded its own
+  `AWS_BUCKET`/`AWS_REGION` constants and built a separate boto3 client on the default credential
+  chain. It now imports `BUCKET_NAME`/`s3` directly from `src.utils.s3_utils` — one client, one
+  `.env`-driven source of truth, shared with `scripts/run_production_inference.py`. See
   [`aws_s3.md`](aws_s3.md).
-- **Authentication uses boto3's default credential chain** (`boto3.client("s3",
-  region_name=AWS_REGION)`, no explicit keys) rather than the `.env` `AWS_ACCESS_KEY`/
-  `AWS_SECRET_KEY` pair `s3_utils.py` reads. Locally this usually works if you have `~/.aws/credentials`
-  or exported `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars (note the *different* env var
-  names boto3's default chain expects vs. this repo's `.env` names) — but it means `.env` alone is
-  not sufficient for the dashboard the way it is for `scripts/run_production_inference.py`.
-- **Not verified inside Docker** — see [`docker.md`](docker.md); the dashboard container is
-  missing `boto3`/`python-dotenv` as currently built and will not start.
+- **`AWS_REGION` is now a required `.env` variable for the dashboard**, not optional. The old
+  hardcoded `"ap-south-2"` fallback no longer exists — if `.env` doesn't set `AWS_REGION` (and
+  no other AWS config provides one), S3 calls will fail with a region-resolution error rather
+  than silently using `ap-south-2`.
+- **Resolved: Docker container missing `boto3`.** `Dockerfile.dashboard` now installs `boto3` and
+  `python-dotenv`; the import chain that previously crashed the container immediately on start has
+  been verified working inside the built image. See [`docker.md`](docker.md) for what was and
+  wasn't verified.
 - View B naming cleanup (`live_df` → something like `oof_eval_df`, per-page "Offline Evaluation"
-  labels) is still open — only the single top-of-page caption exists today.
+  labels) is still open — only the single top-of-page caption exists today. Out of scope for this
+  phase.
 
 ## Troubleshooting common S3/dashboard failures
 
 See [`troubleshooting.md`](troubleshooting.md) for the full table. Quick pointers:
 
-- **`S3 Load Failed: ...` on any View B page** → credentials issue for the default boto3 chain, or
-  the hardcoded bucket/region don't match where `meta_dataset.parquet`/`oof_predictions_final.parquet`
-  actually live. Check `aws configure list` or your exported `AWS_ACCESS_KEY_ID`/
-  `AWS_SECRET_ACCESS_KEY`/`AWS_DEFAULT_REGION`.
+- **`S3 Load Failed: ...` on any page (View A or View B)** → both views now share one S3 client
+  (`src.utils.s3_utils`), so this is the same `.env` credentials/bucket/region issue regardless of
+  which page triggered it. Check `AWS_ACCESS_KEY`/`AWS_SECRET_KEY`/`AWS_REGION`/`AWS_BUCKET_NAME`
+  in `.env`, or (if relying on an IAM role/default chain instead) confirm `.env` doesn't set those
+  keys at all and that a region is resolvable some other way. See [`aws_s3.md`](aws_s3.md).
 - **Production Monitoring page shows the empty-state warning even though you ran batches** →
   confirm you didn't use `--no-s3` when running `scripts/run_production_inference.py` (local-only
   batches never reach S3, so View A can't see them); click "🔄 Refresh from S3" in case the
   60-second cache is stale.
-- **`ModuleNotFoundError: No module named 'boto3'`** → see [`local_setup.md`](local_setup.md) §1;
-  `boto3` is not in `requirements.txt`/`environment.yml`, install it manually.
+- **`ModuleNotFoundError: No module named 'boto3'`** → see [`local_setup.md`](local_setup.md) §1
+  for the host environment, or [`docker.md`](docker.md) if running in a container that predates
+  this phase's `Dockerfile.dashboard` change.
