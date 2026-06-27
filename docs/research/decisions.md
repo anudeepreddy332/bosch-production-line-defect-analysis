@@ -473,12 +473,67 @@ one repository but with an enforced contamination wall.
 
 ---
 
+---
+
+## DR-006 — E1a/E1b/E1c decomposition pre-registration
+
+- **Date:** 2026-06-27
+- **Research Question:** What fraction of E1's +0.0093 OOF MCC gain is attributable to each
+  of three separable signal channels: (A) global dispersion scalars, (B) per-station
+  presence/missingness, (C) per-station measurement values?
+- **Hypothesis:** At least one channel will account for a majority of the gain, identifying the
+  mechanism and directing future work. The decomposition does not need to recover 100% of E1's
+  +0.009 — additive decomposition of interacting features will undercount; the goal is attribution
+  of the *dominant* channel.
+- **Pre-registered attribution rules (carried from DR-005 §3):**
+  - **A-dominant:** Arm A (global dispersion) OOF MCC ≈ E1's 0.1627; arms B and C marginal →
+    the effect is a single global scalar. Representation phase unjustified.
+  - **B-dominant:** Arm B (presence) OOF MCC ≫ Arm C (values) → routing-granularity limited.
+    H_repr is false. Future work: finer presence/path encodings.
+  - **C-dominant:** Arm C (values) OOF MCC ≳ Arm B AND Arm C ≫ Arm A → genuine measurement
+    representation. H_repr supported. Proceed to E2 with Arm C features.
+  - **Mixed / inconclusive:** No arm strongly dominates; interpret each Δ as an upper bound on
+    its channel's contribution and record as inconclusive.
+  - A difference is **meaningful** if it is directionally consistent across ≥ 3/5 folds AND
+    |OOF Δ over dataset_h| > 0.003 (roughly 1/7th of fold σ; chosen to distinguish noise from
+    a sub-σ-but-repeatable effect, consistent with DR-004's recalibration).
+- **Exact feature definitions per arm (committed before results):**
+  - **E1a:** `DATASET_H_FEATURE_COLS` (16) + `sensor_std` + `sensor_nonull_count` = **18 features**.
+    Source columns already in `dataset_e1.parquet`.
+  - **E1b:** `DATASET_H_FEATURE_COLS` (16) + 50 `sensor_present_{station}` binary uint8 flags
+    (1 if `sensor_mean_{station}` is non-null, 0 otherwise) = **66 features**. No measurement
+    values enter this arm.
+  - **E1c:** `DATASET_H_FEATURE_COLS` (16) + 50 `sensor_mean_{station}` with NaN filled by the
+    **per-station median of non-null values** (computed globally, not fold-wise — this is a
+    non-target statistic, so global computation is not leakage) = **66 features**. After fill,
+    every row has a value for every station; the NaN pattern (presence signal) is removed.
+- **Implementation:** single script `scripts/train_dataset_e1_decomposition.py` derives all
+  three arm feature matrices from `dataset_e1.parquet` in-memory (no intermediate parquet files
+  written for ephemeral arm data), calls `train_lightgbm_oof` three times sequentially, writes
+  OOF predictions and importance per arm, updates training summary. Same LightGBM
+  hyperparameters and CV config as all prior experiments.
+- **Imputation rationale for E1c:** per-station global median fill removes the binary
+  presence/absence signal by giving non-visitors the "typical visitor value" for each station.
+  Parts that didn't visit station S get the median measurement of parts that did — the model
+  cannot distinguish them via presence. Any remaining E1c gain is attributable to value variation
+  among visitors.
+- **Comparators:** dataset_h (0.1534) AND full E1 (0.1627). Every arm reported against both.
+- **Evidence Collected:** Pending.
+- **Outcome:** Pending.
+- **Decision:** Pending — returns to Opus for interpretation.
+- **Confidence Level:** N/A (unrun).
+- **Next Action:** Implement, run all three arms, collect evidence, return to Opus.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
 | E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (mechanism confounded)** — OOF MCC 0.1627 (+0.009, 4/5 folds); see DR-005 |
-| E1a/b/c | **Decomposition (new top priority)** | Is the +0.009 from global dispersion / station presence / station values? | **Designed (DR-005), next to run** |
+| E1a | Decomposition arm | Global dispersion only (`sensor_std` + count) | **Running** |
+| E1b | Decomposition arm | Presence only (50 binary station flags) | **Running** |
+| E1c | Decomposition arm | Value only (station means, missingness neutralized) | **Running** |
 | E2 | Gate (resequenced + redesigned) | Does the *winning decomposed channel* survive out-of-time? | Blocked on decomposition identifying a clean channel |
 | E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
 | K-track | Separate program | Leaderboard optimization (competition rules permit) | Structure defined (DR-005 §4); no experiment run |
