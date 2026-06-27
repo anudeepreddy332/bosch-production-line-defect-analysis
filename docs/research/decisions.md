@@ -518,11 +518,91 @@ one repository but with an enforced contamination wall.
   cannot distinguish them via presence. Any remaining E1c gain is attributable to value variation
   among visitors.
 - **Comparators:** dataset_h (0.1534) AND full E1 (0.1627). Every arm reported against both.
-- **Evidence Collected:** Pending.
-- **Outcome:** Pending.
-- **Decision:** Pending — returns to Opus for interpretation.
-- **Confidence Level:** N/A (unrun).
-- **Next Action:** Implement, run all three arms, collect evidence, return to Opus.
+- **Evidence Collected:**
+
+  **Results vs both comparators:**
+  | Arm | Feats | OOF MCC | Δ vs h | % of E1 gain | Δ vs E1 | Folds↑ vs h | Runtime |
+  |-----|-------|---------|--------|--------------|---------|------------|---------|
+  | dataset_h | 16 | 0.15337 | — | — | −0.00933 | — | — |
+  | **E1a** (dispersion) | 18 | 0.15554 | +0.00217 | 23% | −0.00716 | 3/5 | 80 s |
+  | **E1b** (presence) | 66 | 0.16141 | +0.00804 | **86%** | −0.00129 | **5/5** | 89 s |
+  | **E1c** (value) | 66 | 0.15977 | +0.00640 | 69% | −0.00293 | 4/5 | 142 s |
+  | full E1 | 68 | 0.16270 | +0.00933 | 100% | — | 4/5 | 126 s |
+
+  **Fold-by-fold (all arms vs dataset_h):**
+  | Fold | dataset_h | full E1 | E1a | E1b | E1c |
+  |------|-----------|---------|-----|-----|-----|
+  | 0 | 0.13813 | 0.15592 | 0.14658 | 0.15217 | 0.15184 |
+  | 1 | 0.13536 | 0.14006 | 0.13911 | 0.14110 | 0.14223 |
+  | 2 | 0.18114 | 0.18937 | 0.18485 | 0.19090 | **0.19375** |
+  | 3 | 0.15277 | 0.15144 | 0.15035 | **0.15333** | **0.14763** ← regression |
+  | 4 | 0.18498 | 0.18688 | 0.18051 | 0.18973 | 0.18572 |
+
+  **B vs C fold-by-fold (E1b MCC − E1c MCC):**
+  - Fold 0: +0.00033 (B barely ahead)
+  - Fold 1: −0.00113 (C ahead)
+  - Fold 2: −0.00285 (C ahead)
+  - Fold 3: **+0.00570** (B clearly ahead; C regresses vs dataset_h by −0.005)
+  - Fold 4: +0.00401 (B ahead)
+  - B beats C in **3/5 folds**; C beats B in 2/5 (folds 1, 2)
+  - E1b's overall OOF advantage is concentrated in fold 3 (B: +0.00056 vs h; C: −0.00514 vs h)
+
+  **Feature importance — critical finding:**
+  | Arm | Sensor split-gain share | Top feature |
+  |-----|------------------------|-------------|
+  | E1a | 12.8% | `feature_mean` (4856) |
+  | E1b | **7.0%** | `feature_mean` (5451) |
+  | E1c | **58.4%** | `sensor_mean_L3_S33` (2098) |
+  - E1b: binary presence flags have low cardinality → **resist the split-gain trap** → deliver
+    86% of E1's gain with only 7% of the split-gain. This is the inverse of the trap.
+  - E1c: continuous station means absorb 58% split-gain (same trap pattern as full E1's 67%),
+    yet deliver only 69% of E1's gain. Sensor_mean_L3_S33 remains top by split-gain in E1c,
+    confirming that when missingness is neutralized it acts as a continuous-value predictor — but
+    at lower honest gain than when it could also serve as a presence flag.
+  - E1a: minimal sensor split-gain (12.8%); `feature_mean` and `sensor_std` rank 1st/2nd.
+
+  **Runtime and resources (all arms on same hardware):**
+  - E1a: 80 s (18 feats, fewest); E1b: 89 s (66 binary feats); E1c: 142 s (66 continuous feats)
+  - Total decomposition: ~5 min 15 s. No new harness was required.
+
+  **Reproduce:**
+  `PYTHONPATH=. python scripts/train_dataset_e1_decomposition.py`
+  (requires `data/features/dataset_e1.parquet` from `build_dataset_e1.py`)
+
+- **Outcome against pre-registered attribution rules:**
+  - A-dominant? **No.** E1a captures only 23% of E1's gain, below the 0.003 meaningfulness
+    threshold (0.00217 < 0.003), and 3/5 folds improved. Dispersion alone does not explain E1.
+  - B-dominant (B ≫ C)? **Partially.** E1b captures 86% of E1's gain (5/5 folds) vs E1c's
+    69% (4/5 folds). E1b is closer to the full E1 ceiling (gap −0.001 vs −0.003). E1b beats
+    E1c in 3/5 folds; E1c beats E1b in 2/5. B's advantage is concentrated in fold 3, where E1c
+    regresses vs dataset_h. This is consistent with B-dominant but the margin is not overwhelming.
+  - C-dominant (C ≳ B and C ≫ A)? **No.** C does not meet or exceed B in OOF MCC or fold
+    consistency.
+  - Mixed / inconclusive? **Partially.** B leads C in overall OOF MCC and fold consistency,
+    but C contributes independently (C's gain in folds 1, 2 exceeds B's). Both channels are
+    above the meaningfulness threshold; neither fully accounts for the other's contribution.
+  - **Pre-registered conclusion applies: B-leads-C, consistent with routing-granularity
+    being the dominant mechanism.** But C is not zero — value information contributes,
+    especially in folds 1 and 2. Attribution is B-dominant / C-secondary. Opus must decide
+    whether this clears the "B ≫ C" threshold or should be recorded as mixed.
+
+- **Unexpected observations:**
+  1. **Fold 3 as a temporal discriminant.** E1c regresses on fold 3 (−0.00514 vs dataset_h)
+     while E1b barely improves (+0.00056). This fold's temporal window may exhibit sensor value
+     drift where measured values carry misleading signal. Presence is neutral; value is
+     counterproductive. This is the single strongest evidence against purely value-driven signal.
+  2. **The inverse split-gain trap.** E1b (binary, low-cardinality) resists the split-gain trap
+     and delivers more honest MCC improvement per unit of split-gain than E1c (high-cardinality
+     continuous). This is exactly the trap described in DR-001.
+  3. **E1b nearly matches the full E1 ceiling.** 86% of E1's gain with presence flags alone, only
+     −0.001 below the full bundle. The joint model (E1, NaN-passthrough) extracts only a small
+     incremental gain from value on top of presence.
+
+- **Decision:** Presenting evidence to Opus for interpretation against the B-dominant threshold.
+  Sonnet does not interpret; Opus decides whether this is routing-granularity-limited (B ≫ C) or
+  mixed (B leads, C secondary), and whether E2 should target E1b features exclusively.
+- **Confidence Level:** N/A for interpretation — evidence delivered.
+- **Next Action:** Return to Opus.
 
 ---
 
@@ -531,9 +611,9 @@ one repository but with an enforced contamination wall.
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
 | E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (mechanism confounded)** — OOF MCC 0.1627 (+0.009, 4/5 folds); see DR-005 |
-| E1a | Decomposition arm | Global dispersion only (`sensor_std` + count) | **Running** |
-| E1b | Decomposition arm | Presence only (50 binary station flags) | **Running** |
-| E1c | Decomposition arm | Value only (station means, missingness neutralized) | **Running** |
+| E1a | Decomposition arm | Global dispersion only (`sensor_std` + count) | **DONE** — OOF 0.1555, 23% of E1 gain, 3/5 folds, below threshold |
+| E1b | Decomposition arm | Presence only (50 binary station flags) | **DONE** — OOF 0.1614, 86% of E1 gain, 5/5 folds, B-leads |
+| E1c | Decomposition arm | Value only (station means, missingness neutralized) | **DONE** — OOF 0.1598, 69% of E1 gain, 4/5 folds, fold-3 regresses |
 | E2 | Gate (resequenced + redesigned) | Does the *winning decomposed channel* survive out-of-time? | Blocked on decomposition identifying a clean channel |
 | E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
 | K-track | Separate program | Leaderboard optimization (competition rules permit) | Structure defined (DR-005 §4); no experiment run |
