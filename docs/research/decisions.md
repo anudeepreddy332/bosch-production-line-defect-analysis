@@ -912,14 +912,314 @@ Production-pure; `--grep "K"` is Kaggle-pure.
 
 ---
 
+## DR-009 — E2: Out-of-time durability of the presence signal
+
+- **Date:** 2026-06-28
+- **Role:** Implementation and evidence entry (Sonnet). No interpretation.
+  Results returned to Opus for Bayesian update and decision.
+
+### §1 — Pre-registered design (carried from DR-007 §5)
+
+- **Research Question:** Does the presence signal (E1b) survive a true out-of-time /
+  forward-chaining temporal split? Co-evaluated with dataset_h (baseline) and E1c
+  (value-only) to test whether value's fold-3 non-stationarity generalizes.
+- **Models evaluated:** dataset_h (baseline, 16 features), E1b (presence-only, 66 features),
+  E1c (value-only, 66 features). Exact same feature constructions as E1a/b/c decomposition.
+- **Pre-registered success bar (DR-007 §5):** E1b additive gain over dataset_h retains
+  **≥ 70–80%** of its in-CV magnitude (+0.00804) out-of-time AND the combined-beats-routing
+  ordering holds.
+- **Pre-registered failure:** gain collapses into noise or sign-flips.
+
+### §2 — Implementation
+
+- **Script:** `scripts/train_e2_out_of_time.py`
+- **Temporal split:** Forward-chaining at chunk boundary — chunks 0–82 (training: 830,000
+  rows, 5,487 positives @ 0.661%), chunks 83–118 (test: 353,747 rows, 1,392 positives @
+  0.394%). Split verified: zero chunks straddle the boundary.
+- **Single train/test per arm:** one model per arm, trained on the training portion, evaluated
+  on the test portion. No k-fold for OOT (expected).
+- **Hyperparameters:** identical to all prior experiments (`n_estimators=700`, fixed, no early
+  stopping — using the test set for early stopping would bias OOT MCC; `random_state=42`).
+- **E1c imputation:** per-station median computed from training rows only (more principled for
+  OOT than global median; difference is negligible for a non-target statistic).
+- **Reproduce:**
+  `PYTHONPATH=. python scripts/train_e2_out_of_time.py`
+  (requires `data/features/dataset_e1.parquet` from `build_dataset_e1.py`)
+- **Data fingerprint:** from `e2_out_of_time_results.json` (dataset_h arm): `8d9e1d6ef5082be6`
+- **Runtime:** dataset_h 12 s, E1b 14 s, E1c 18 s. Total ~45 s.
+
+### §3 — Evidence
+
+**Main results table:**
+
+| Arm | Feats | in-CV MCC | OOT MCC | ABS ret% | Δ_incv (vs h) | Δ_oot (vs h) | Durability% |
+|-----|-------|-----------|---------|----------|---------------|--------------|-------------|
+| dataset_h  | 16 | 0.15337 | 0.11679 | 76.1% | +0.0000 | +0.0000 | — |
+| **E1b** (presence) | 66 | 0.16141 | 0.11850 | 73.4% | +0.0080 | +0.0017 | **21.2%** |
+| E1c (value) | 66 | 0.15977 | 0.11954 | 74.8% | +0.0064 | +0.0027 | **42.9%** |
+
+- **Durability%** = OOT gain over dataset_h / in-CV gain over dataset_h × 100.
+  This is the pre-registered metric.
+- **ABS ret%** = OOT MCC / in-CV MCC × 100 (absolute retention, for reference).
+
+**In-CV fold MCCs (reference from E1a/b/c decomposition, DR-006):**
+
+| Model | F0 | F1 | F2 | F3 | F4 | OOF |
+|-------|----|----|----|----|----|----|
+| dataset_h | 0.13813 | 0.13536 | 0.18114 | 0.15277 | 0.18498 | 0.15337 |
+| E1b | 0.15217 | 0.14110 | 0.19090 | 0.15333 | 0.18973 | 0.16141 |
+| E1c | 0.15184 | 0.14223 | 0.19375 | 0.14763 | 0.18572 | 0.15977 |
+
+**Feature importance rank stability (in-CV vs OOT, major stations only; descriptive):**
+
+*E1b (presence flags):*
+| Feature | in-CV rank | OOT rank | Δrank |
+|---------|-----------|---------|-------|
+| sensor_present_L0_S11 | 16 | 17 | +1 |
+| sensor_present_L3_S38 | 17 | 18 | +1 |
+| sensor_present_L0_S10 | 18 | 22 | +4 |
+| sensor_present_L0_S9 | 19 | 20 | +1 |
+| sensor_present_L3_S35 | 20 | 16 | −4 |
+| sensor_present_L3_S33 | 49 | 48 | −1 |
+| sensor_present_L3_S34 | 51 | 50 | −1 |
+| sensor_present_L0_S4 | 21 | 19 | −2 |
+| sensor_present_L0_S6 | 22 | 25 | +3 |
+
+*E1c (station means, imputed):*
+| Feature | in-CV rank | OOT rank | Δrank |
+|---------|-----------|---------|-------|
+| sensor_mean_L3_S33 | 1 | 1 | 0 |
+| sensor_mean_L3_S30 | 4 | 2 | −2 |
+| sensor_mean_L3_S29 | 7 | 7 | 0 |
+| sensor_mean_L3_S36 | 10 | 9 | −1 |
+| sensor_mean_L3_S35 | 11 | 11 | 0 |
+| sensor_mean_L0_S0 | 12 | 12 | 0 |
+| sensor_mean_L0_S1 | 13 | 13 | 0 |
+
+Full importance files: `outputs/feature_importance_e2_dataset_h.csv`,
+`outputs/feature_importance_e2_dataset_e1b.csv`, `outputs/feature_importance_e2_dataset_e1c.csv`.
+Full results JSON: `outputs/e2_out_of_time_results.json`.
+
+### §4 — Outcome against pre-registered bar
+
+- **E1b gain retention: 21.2%** — far below the 70–80% bar.
+- **E1b OOT delta over dataset_h: +0.00171** — below the DR-006 meaningfulness threshold of
+  0.003 (< 1 fold-σ, not directionally meaningful in OOT).
+- **Ordering OOT: dataset_h < E1b < E1c** — the in-CV ordering was dataset_h < E1c < E1b.
+  The E1b > E1c ordering **reverses** out-of-time.
+- **Verdict: E2 FAILS the pre-registered success bar.** The additive gain collapses well
+  below the retention threshold, and the in-CV ordering does not hold OOT.
+
+### §5 — Limitations
+
+1. **Single OOT split:** one temporal split cannot distinguish a systematic effect from a
+   particular-period artifact. The test window (chunks 83–118) represents one temporal
+   regime; a different split point might yield different results.
+2. **No early stopping in OOT model:** the CV training used early stopping (stopping_rounds=100),
+   which might have produced fewer than 700 trees. The OOT model uses 700 trees fixed — it
+   may be slightly more regularized or over-fitted than the per-fold CV models. Direction of
+   bias is unclear but unlikely to reverse the main finding.
+3. **Positive rate shift train→test:** 0.661% train vs 0.394% test — the test window has a
+   lower failure rate. This affects absolute MCC values but not the ordering or the gain-
+   retention metric (which is relative to the simultaneous dataset_h OOT baseline).
+4. **Target-rate features for test rows:** the routing features (transition_fail_rate_*,
+   path_count, etc.) in dataset_e1.parquet were computed fold-wise during the original CV
+   and are available for test rows. For some test-period rows, these OOF values may reflect
+   information from chunks that appear temporally AFTER the row's own chunk (since the
+   original CV was random-group, not time-ordered). This is a mild confound on the OOT
+   evaluation of the routing features; it does not apply to the sensor features (E1b/E1c),
+   which are raw per-part measurements.
+5. **Mechanism of the drop is ambiguous:** it is not established whether the OOT drop
+   originates from routing features (dataset_h itself loses 24% absolute OOT) or from
+   the sensor features. E2 cannot separate these contributions directly.
+
+### §6 — Unexpected observations
+
+1. **Uniform absolute MCC drop across all models (~24–27%):** the drop in absolute MCC is
+   nearly identical for all three arms (dataset_h: −24%, E1b: −27%, E1c: −25%). This
+   strongly suggests the OOT degradation is driven primarily by the routing features
+   (shared by all arms), not by the sensor features added in E1b/E1c. The sensor features
+   add very little to a shared temporal-degradation picture.
+2. **Ordering reversal (E1c > E1b OOT, vs E1b > E1c in-CV):** the in-CV decomposition
+   established E1b (presence) as the stronger channel; OOT, E1c (value) is marginally
+   stronger (+0.0027 vs +0.0017 over dataset_h). Both deltas are below the 0.003
+   meaningfulness threshold, so the reversal may be noise-level, but it is directionally
+   contrary to H_struct's prediction that presence (structural attribute) would be the
+   more temporally durable channel.
+3. **Feature importance rank stability despite MCC collapse:** both E1b and E1c show
+   very small rank changes for their major features (|Δrank| ≤ 4 for E1b, ≤ 2 for E1c).
+   The model's learned feature ordering is stable, but stable ordering is compatible with
+   a uniform collapse — the features still matter in the same relative order, but the
+   overall predictive signal weakens OOT.
+4. **E1c's top feature (L3_S33) holds rank 1 OOT.** This is the same station that was
+   identified in E1 (DR-004) as having a strong 4× presence-signal. Under median fill
+   (E1c), it acts as a continuous-value predictor and maintains its top rank OOT, suggesting
+   the value signal for this station is temporally stable in relative importance — but the
+   absolute OOT MCC gain is negligible.
+
+### §7 — Hypothesis status (evidence only, no interpretation)
+
+Evidence returned to Opus for Bayesian update. This entry does not extend to interpretation.
+The pre-registered bar was not cleared. The evidence is recorded as-is.
+
+Bayesian update table (completed by Opus in DR-010 — the post-E2 interpretation):
+
+| Hypothesis | Prior (pre-E2) | E2 evidence bearing on it | Posterior | Confidence | Movement |
+|---|---|---|---|---|---|
+| **H_struct:** structural/routing-encoding-limited (presence drives gain) | Leading, 0.70 | E1b gain collapses OOT (21.2% retention); ordering reverses vs E1c | **0.25** | Med | Mechanism survives (presence *did* drive the in-CV gain) but its only valuable claim — durable, fundable headroom — is falsified. Demoted from leading to minor. |
+| **H_nonstat:** non-stationarity is the gating risk | Promoted to gate, 0.70 | All arms lose ~24-27% absolute OOT; E1b/E1c gains both collapse; baseline degrades; base rate 0.66%→0.39% | **0.90** | High | Strongly confirmed and promoted to **primary limiter**. Sub-claim "value channel *specifically* non-stationary" *not* confirmed — drift is global, not channel-specific. |
+| **H_info:** honest leakage-free ceiling ~0.16–0.17 | Re-strengthened, 0.65 | OOT MCC ~0.117 for all arms; below the in-CV range | **0.80 (re-leveled)** | High | "There is a ceiling and we're at it" strengthens; the *level* drops — deployable ceiling ≈ **0.12**, not ~0.16. The ~0.16 was an in-distribution figure. |
+| **H_value_durable:** values add durable unique signal | Weakened, 0.25 | E1c OOT Δ over h = +0.0027 (below 0.003 threshold); durability 42.9% | **0.15** | Med | Even when value "won" OOT it was noise-level. Rejected as deployable. |
+| **H_splitgain:** split-gain inadmissible | Near-certain, 0.90 | Not directly tested; inverse trap stands from decomposition | **0.90** | High | Unchanged. Settled — now low-value to keep examining. |
+| **H_cv_optimistic:** random-group chunk CV overstates *deployable* performance (NEW, surfaced by E2) | (implicit) | ~24% gap between in-CV and OOT for the *same* model | **0.75** | Med-High | New. Recontextualizes the entire DR metric ladder as in-distribution figures. Becomes a founding hypothesis of Research Program 2. |
+
+- **Confidence Level:** see DR-010 (the interpretation entry).
+- **Decision:** Interpreted in DR-010. Representation Research Program frozen; Research Program 2 opened.
+- **Next Action:** See DR-010.
+
+---
+
+## DR-010 — Research-program transition: freeze the Representation Program, open Program 2 (Temporal Robustness & Honest Deployability)
+
+- **Date:** 2026-06-28
+- **Role:** Interpretation & architectural decision (Opus). No code, no experiments, no
+  experiment design. This entry **closes one research program and opens the next.** It is the
+  hinge of the project's scientific narrative: Research Program 1 (RP1, "is the model
+  representation-limited?") is answered and frozen; Research Program 2 (RP2, "how do we honestly
+  measure and preserve deployable performance under temporal drift?") is chartered.
+
+### §1 — Research-program transition decision: **FREEZE RP1** (not close, not continue)
+
+The Representation Research Program (DR-001 → E1 → E1a/b/c → E2) is placed in **FROZEN** status.
+
+- **Not *continued*:** the program has produced a convergent negative. The sensor measurement
+  block, in every leakage-safe form we can extract (full block, presence, value, dispersion),
+  adds no *durable* signal over routing. Funding more sensor-representation work is the
+  lowest-EV quadrant available (Phase 4). Continuing would be inertia, not evidence.
+- **Not *closed permanently*:** E2 is a **single forward-chaining split with no error bars**.
+  Declaring a permanent impossibility from one split would over-claim — exactly the
+  post-hoc overconfidence this log exists to prevent. The honest evidentiary state is "strong
+  convergent in-CV evidence + one clean OOT split," which warrants *stopping active work*, not
+  *closing the question forever*.
+- **Therefore FROZEN, with a narrow, pre-registered reopening clause:** RP1 reopens **only** if
+  RP2's temporally-honest harness (backlog item #1) surfaces a *specific, deconfounded* gap that
+  a measurement representation — and not a routing/encoding fix — is uniquely positioned to
+  close. Reopening is a *downstream consequence of RP2 evidence*, never a default. Absent that
+  trigger, RP1 stays frozen.
+- **Scope of the freeze (precise):** what is frozen is **sensor-measurement representation
+  engineering**. Routing-robustness work (e.g. temporally-honest target encodings) is **not**
+  RP1 and is **not** frozen — it is RP2 backlog. The boundary matters: "freeze representation"
+  must not be misread as "freeze all feature work."
+
+**Conservatism note:** this is the conservative call in both senses — conservative about
+*claims* (one split cannot prove a permanent null) and conservative about *spend* (a convergent
+negative should stop consuming scarce effort).
+
+### §2 — Lessons learned: closing retrospective of the Representation Program
+
+Per-hypothesis life-cycle (initial belief → tests → belief-changing evidence → final status):
+
+| Hypothesis | What we believed initially | Experiments that tested it | Evidence that changed belief | Final status |
+|---|---|---|---|---|
+| **H_repr** — measurement-representation-limited (the founding hypothesis, DR-001) | *Leading (Med).* The model compresses ~968 sensors into one scalar (`feature_mean`), washing out localized anomalies; recovering them adds durable MCC. | E1 (full block), E1c (value-only, missingness-neutralized), E2 (OOT). | E1's gain was confounded; E1c value-unique < 14% and redundant with presence; E2 value durability 43% but absolute **sub-noise**. | **REJECTED** as a source of durable deployable signal (bounded, not "zero info": any unique value signal is < 14% in-CV and below the noise floor OOT). |
+| **H_struct** — structural/routing-encoding-limited; presence is durable headroom (emerged DR-007) | *Adopted as leading (0.70)* after decomposition isolated presence. | E1b (presence-only, in-CV), E2 (presence OOT durability). | E1b carried 86% of the gain, 5/5 folds (strong in-CV); E2 collapsed it to 21% durability, sub-noise, and it **lost to value OOT** — the opposite of the prediction that stable structure is more durable. | **MECHANISM CONFIRMED, DEPLOYABILITY REJECTED.** Presence explained the in-CV gain; it is not durable. Demoted to minor (0.25). |
+| **H_info** — honest leakage-free ceiling ~0.16–0.17 (DR-001/005/007) | *Primary competitor (Plausible).* | The whole model ladder + E2. | In-CV plateaued ~0.16; E2 OOT ~0.117 revealed the in-CV figure was **in-distribution**. | **CONFIRMED but RE-LEVELED:** deployable ceiling ≈ **0.12**. Confidence up, level down. |
+| **H_splitgain** — split-gain importance inadmissible here (DR-001) | *Asserted from prior ablation.* | E1 (66.8% gain / +0.009), decomposition (E1b 7% gain → 86% uplift; E1c 58% gain → less uplift). | The **inverse trap** measured cleanly: gain magnitude anti-correlated with honest contribution. | **CONFIRMED, near-certain (0.90).** A permanent methodological keeper for the whole project. |
+| **H_nonstat** — temporal non-stationarity is the dominant/limiting risk (DR-001 secondary → DR-005/007 gate) | *Retained secondary,* then promoted to the gating risk. | Fold-spread observations throughout; **E2** directly. | E2: uniform ~24–27% OOT drop across all arms; base rate 0.66%→0.39%. | **CONFIRMED and PROMOTED to PRIMARY LIMITER (0.90).** This is the handoff to RP2. |
+| **H_value_durable** — values add durable unique signal | *Implicit in H_repr.* | Decomposition fold-3, E2. | < 14% unique in-CV, fold-3 regression, sub-noise OOT. | **REJECTED (0.15).** |
+| **H_cv_optimistic** — random-group CV overstates deployable performance (surfaced by E2) | *Not articulated until E2.* | E2 (first true OOT). | ~24% in-CV vs OOT gap for the *same* model. | **ADOPTED (0.75)** — a founding hypothesis of RP2; recontextualizes every prior DR number as in-distribution. |
+
+**The one-paragraph closing summary of RP1.** The project began (DR-001) believing it was
+*representation-limited*: that failure signal lay in sensor measurements destroyed by global-mean
+compression. Three controlled experiments overturned this. E1 showed a finer representation adds
+only +0.009 in-CV, and confoundedly. The decomposition (E1a/b/c) attributed that gain to
+*presence/structure*, not measurement values, and exposed the inverse split-gain trap. E2 then
+showed the gain does not survive a true temporal split — and, more importantly, that **the whole
+model degrades ~24% out-of-time**, with signal concentrated in target-encoded routing features
+that are structurally the most drift-fragile representation possible. The founding diagnosis is
+replaced: the model is not representation-limited; it is **non-stationarity-limited**, and our
+prior metrics were optimistic because the CV did not respect time. RP1 closes as a clean,
+well-controlled negative — first-class per this log's charter.
+
+### §3 — Research Program 2 charter
+
+**Governing question (single):**
+> *How do we honestly measure — and then preserve — the model's deployable performance under a
+> non-stationary failure process?*
+
+- **Objective.** Establish a temporally-honest evaluation harness as the project's canonical
+  metric; quantify the true deployable performance and its rate of decay; determine which
+  interventions (honest encodings, retraining cadence, threshold policy, monitoring) preserve
+  that performance at acceptable engineering cost — or establish that the drift is irreducible.
+- **Scope (in).** Forward-chaining / rolling-origin CV as canonical; temporally-honest
+  (past-only) feature encodings, especially target-rate routing features; drift
+  detection/monitoring tied to the observed shift (base rate + feature drift); retraining-cadence
+  policy; decision/threshold robustness under base-rate shift.
+- **Success criteria.** (1) A canonical temporal harness adopted and **all key models
+  re-baselined** under it, with error bars from ≥ 3 rolling-origin folds. (2) A **quantified
+  decay curve** — how fast performance degrades without retraining. (3) **At least one
+  intervention** shown to recover a meaningful, honest fraction of the OOT loss, **OR** a
+  documented, bounded finding that the drift is irreducible (a clean negative is a success). (4)
+  A decision/threshold policy validated to remain cost-effective under the observed base-rate
+  shift. **Success is knowledge + deployability, not a target MCC.**
+- **Non-goals.** Sensor-measurement representation engineering (frozen RP1); new model
+  architectures / HPO (capacity is not binding, DR-001); chasing higher *in-CV* MCC (now the
+  wrong metric); any leakage-laden / record-adjacency / Kaggle-only feature (charter wall,
+  DR-008); leaderboard optimization (separate K-track).
+
+### §4 — Prioritized backlog (EV = expected improvement × confidence ÷ effort)
+
+| Rank | Work item | Why / EV rationale | EV |
+|---|---|---|---|
+| **1** | **Rolling-origin / forward-chaining CV as the canonical harness** | Low effort (E2 already built the split); highest confidence (E2 proved the old harness ~24% optimistic); **foundational** — fixes the denominator for every downstream decision and puts error bars on E2's single split. Strictly precedes all other items. | **Highest** |
+| **2** | **Threshold / decision-policy robustness under base-rate shift** | Cheapest concrete win: the decision layer already exists; base rate demonstrably moves 0.66%→0.39%, shifting the cost-optimal operating point. Tiny effort, near-certain payoff, directly production-relevant. | High |
+| **3** | **Drift monitoring (operationalize existing Evidently infra)** | Medium effort; high confidence it is needed for any real deployment; ties alerts to the *measured* base-rate/feature drift. The project's deployability thesis made concrete. | Med-High |
+| **4** | **Temporally-honest (past-only) target encodings + clean OOT re-baseline** | Highest *upside* intervention (directly attacks the diagnosed fragile component) **and** removes the E2 OOF-leak confound (DR-009 limitation #4). Rank depressed only by *uncertain payoff* under the strict EV formula — its value-of-information is high regardless: a bounded negative proves the drift is irreducible. | Med (high VOI) |
+| **5** | **Retraining-cadence policy** | Highest *eventual* value, but **dependency-gated**: cadence cannot be set until the decay curve (#1) and an honest re-baseline (#4) exist. Sequenced last by dependency, not by low importance. | Med (gated) |
+
+Items explicitly **below the bar / not funded:** further sensor-representation engineering;
+resolving "presence = routing?"; further split-gain analysis. All are now low-value.
+
+### §5 — Belief-state table (post-E2, end of RP1)
+
+| Hypothesis | Status | Confidence |
+|---|---|---|
+| H_nonstat: non-stationarity is the primary limiter | ↑↑ Promoted to primary | 0.90 |
+| H_info: a ceiling exists and we're at it; deployable level ≈ 0.12 | ↑ Confirmed, re-leveled | 0.80 |
+| H_cv_optimistic: random-group CV overstates deployable performance | ↑ New, adopted | 0.75 |
+| H_splitgain: split-gain inadmissible (inverse trap) | = Settled | 0.90 |
+| H_struct: structural/routing-encoding-limited (presence durable) | ↓↓ Mechanism only; not durable | 0.25 |
+| H_repr: measurement-representation-limited (founding hypothesis) | ↓↓ Rejected as deployable source | 0.15 |
+| H_value_durable: values add durable unique signal | ↓ Rejected | 0.15 |
+
+### §6 — Decision, confidence, next action
+
+- **Decision:** Freeze RP1 (Representation Research Program) with the §1 reopening clause. Open
+  RP2 (Temporal Robustness & Honest Deployability) under the §3 charter. Adopt the §4 backlog
+  ordering. No experiment is designed in this entry — RP2's first experiment will be
+  pre-registered separately, per protocol, when authorized.
+- **Confidence:** **High** that representation is the wrong place to keep spending and that
+  non-stationarity is the binding constraint; **Medium** on the *magnitude* of the OOT
+  degradation (single split — backlog #1 is precisely the cheap confirmation).
+- **Next Action:** Return to user. On go-ahead, pre-register RP2's first experiment (expected:
+  rolling-origin CV harness + clean temporal re-baseline, backlog #1). RP1 remains frozen.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
 | E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (confounded)** — OOF 0.1627; mechanism resolved by E1a/b/c |
 | E1a | Decomposition arm | Global dispersion only | **DONE** — OOF 0.1555, 23% of gain, below threshold (not the mechanism) |
-| E1b | Decomposition arm | Presence only (50 binary flags) | **DONE** — OOF 0.1614, 86% of gain, 5/5 folds — **winning channel** |
+| E1b | Decomposition arm | Presence only (50 binary flags) | **DONE** — OOF 0.1614, 86% of gain, 5/5 folds — **winning channel in-CV** |
 | E1c | Decomposition arm | Value only (missingness neutralized) | **DONE** — OOF 0.1598, ≤14% unique, fold-3 regresses (non-stationary) |
-| E2 | Gate (redesigned, **top priority**) | Does presence (E1b) survive a true out-of-time split? Co-arms dataset_h, E1c | **Designed (DR-007 §5), next to run** |
+| E2 | Gate (redesigned) | Does presence (E1b) survive a true out-of-time split? Co-arms dataset_h, E1c | **DONE — FAILS the pre-registered bar.** E1b: 21.2% gain durability (bar: ≥70–80%); ordering reverses OOT. See DR-009. |
 | E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
+| **— RP1 boundary —** | **Representation Research Program** | Is the model representation-limited? (DR-001) | **FROZEN (DR-010).** Answered: no durable deployable signal in the sensor block; model is non-stationarity-limited. Reopens only via the DR-010 §1 clause. |
+| RP2-1 | Research Program 2, item #1 | Honest deployable performance under temporal drift (rolling-origin CV + clean re-baseline) | **Chartered (DR-010 §3/§4), not yet pre-registered or run** |
+| RP2-2 | Research Program 2, item #2 | Threshold/decision robustness under base-rate shift | **Backlog (DR-010 §4)** |
+| RP2-3 | Research Program 2, item #3 | Drift monitoring (operationalize) | **Backlog (DR-010 §4)** |
+| RP2-4 | Research Program 2, item #4 | Temporally-honest target encodings | **Backlog (DR-010 §4)** |
+| RP2-5 | Research Program 2, item #5 | Retraining-cadence policy | **Backlog (DR-010 §4, dependency-gated)** |
 | K-track | Separate program | Leaderboard optimization | **Permanent architecture ratified (DR-008)**; scaffolded + firewalled; no experiment run |

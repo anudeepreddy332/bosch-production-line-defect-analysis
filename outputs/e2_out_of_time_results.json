@@ -1,0 +1,177 @@
+{
+  "experiment": "E2",
+  "split": {
+    "method": "forward-chaining temporal split at chunk boundary",
+    "train_chunks": "0-82",
+    "test_chunks": "83+",
+    "train_rows": 830000,
+    "test_rows": 353747,
+    "train_pos": 5487,
+    "test_pos": 1392
+  },
+  "arms": [
+    {
+      "arm": "dataset_h",
+      "features": 16,
+      "train_rows": 830000,
+      "train_pos": 5487,
+      "test_rows": 353747,
+      "test_pos": 1392,
+      "oot_mcc": 0.11679002947727628,
+      "oot_threshold": 0.54,
+      "elapsed_s": 11.668626958038658,
+      "mem_peak_gb": 1.5582733154296875,
+      "mem_delta_gb": 0.141448974609375,
+      "importance_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/outputs/feature_importance_e2_dataset_h.csv",
+      "data_fingerprint": "b71f070a5769e1d6",
+      "incv_mcc": 0.15337,
+      "retained_pct": 76.1,
+      "delta_incv": 0.0,
+      "delta_oot": 0.0,
+      "durability_pct": NaN
+    },
+    {
+      "arm": "dataset_e1b",
+      "features": 66,
+      "train_rows": 830000,
+      "train_pos": 5487,
+      "test_rows": 353747,
+      "test_pos": 1392,
+      "oot_mcc": 0.11849808449878249,
+      "oot_threshold": 0.46,
+      "elapsed_s": 13.828322166984435,
+      "mem_peak_gb": 2.227783203125,
+      "mem_delta_gb": 0.6742706298828125,
+      "importance_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/outputs/feature_importance_e2_dataset_e1b.csv",
+      "data_fingerprint": "0dbe5fa05e614ed1",
+      "incv_mcc": 0.16141,
+      "retained_pct": 73.4,
+      "delta_incv": 0.00804,
+      "delta_oot": 0.00171,
+      "durability_pct": 21.2
+    },
+    {
+      "arm": "dataset_e1c",
+      "features": 66,
+      "train_rows": 830000,
+      "train_pos": 5487,
+      "test_rows": 353747,
+      "test_pos": 1392,
+      "oot_mcc": 0.11953553351063086,
+      "oot_threshold": 0.54,
+      "elapsed_s": 17.724890166020487,
+      "mem_peak_gb": 2.1502532958984375,
+      "mem_delta_gb": -0.064239501953125,
+      "importance_path": "/Users/anudeep/PycharmProjects/bosch-production-line-performance/outputs/feature_importance_e2_dataset_e1c.csv",
+      "data_fingerprint": "78a4b6acb3441ea8",
+      "incv_mcc": 0.15977,
+      "retained_pct": 74.8,
+      "delta_incv": 0.0064,
+      "delta_oot": 0.00275,
+      "durability_pct": 42.9
+    }
+  ],
+  "rank_tables": {
+    "dataset_e1b": [
+      {
+        "feature": "sensor_present_L0_S11",
+        "incv_rank": 16,
+        "oot_rank": 17,
+        "rank_change": 1
+      },
+      {
+        "feature": "sensor_present_L3_S38",
+        "incv_rank": 17,
+        "oot_rank": 18,
+        "rank_change": 1
+      },
+      {
+        "feature": "sensor_present_L0_S10",
+        "incv_rank": 18,
+        "oot_rank": 22,
+        "rank_change": 4
+      },
+      {
+        "feature": "sensor_present_L0_S9",
+        "incv_rank": 19,
+        "oot_rank": 20,
+        "rank_change": 1
+      },
+      {
+        "feature": "sensor_present_L3_S35",
+        "incv_rank": 20,
+        "oot_rank": 16,
+        "rank_change": -4
+      },
+      {
+        "feature": "sensor_present_L3_S33",
+        "incv_rank": 49,
+        "oot_rank": 48,
+        "rank_change": -1
+      },
+      {
+        "feature": "sensor_present_L3_S34",
+        "incv_rank": 51,
+        "oot_rank": 50,
+        "rank_change": -1
+      },
+      {
+        "feature": "sensor_present_L0_S4",
+        "incv_rank": 21,
+        "oot_rank": 19,
+        "rank_change": -2
+      },
+      {
+        "feature": "sensor_present_L0_S6",
+        "incv_rank": 22,
+        "oot_rank": 25,
+        "rank_change": 3
+      }
+    ],
+    "dataset_e1c": [
+      {
+        "feature": "sensor_mean_L3_S33",
+        "incv_rank": 1,
+        "oot_rank": 1,
+        "rank_change": 0
+      },
+      {
+        "feature": "sensor_mean_L3_S30",
+        "incv_rank": 4,
+        "oot_rank": 2,
+        "rank_change": -2
+      },
+      {
+        "feature": "sensor_mean_L3_S29",
+        "incv_rank": 7,
+        "oot_rank": 7,
+        "rank_change": 0
+      },
+      {
+        "feature": "sensor_mean_L3_S36",
+        "incv_rank": 10,
+        "oot_rank": 9,
+        "rank_change": -1
+      },
+      {
+        "feature": "sensor_mean_L3_S35",
+        "incv_rank": 11,
+        "oot_rank": 11,
+        "rank_change": 0
+      },
+      {
+        "feature": "sensor_mean_L0_S0",
+        "incv_rank": 12,
+        "oot_rank": 12,
+        "rank_change": 0
+      },
+      {
+        "feature": "sensor_mean_L0_S1",
+        "incv_rank": 13,
+        "oot_rank": 13,
+        "rank_change": 0
+      }
+    ]
+  },
+  "reproduce": "PYTHONPATH=. python scripts/train_e2_out_of_time.py (requires data/features/dataset_e1.parquet from build_dataset_e1.py)"
+}
