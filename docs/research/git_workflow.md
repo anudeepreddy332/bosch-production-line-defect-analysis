@@ -106,5 +106,28 @@ recorded. Missing any one → not done.
 ## Baseline
 
 Experiments require a single immutable anchor. The stable research baseline is the tag
-**`baseline-v1`**, to be placed on `main` after the production system (PR #1) is merged. All
-experiment branches are cut from `baseline-v1`. See DR-003 for the adoption decision.
+**`baseline-v1`**, placed on `main` at the production-system merge commit (PR #1 merged 2026-06-27).
+All experiment branches are cut from `baseline-v1`. See DR-003 for the adoption decision.
+
+## Two tracks, one repo (added DR-005)
+
+The repo runs two non-overlapping programs. Disjoint ID prefixes are both the join key and the
+contamination firewall.
+
+| | Production (primary) | Kaggle (secondary) |
+|---|---|---|
+| Canonical log | `decisions.md` | `kaggle_decisions.md` |
+| Decision IDs | `DR-NNN` | `KDR-NNN` |
+| Experiment IDs | `E<N>` (diagnostics `E<N>p`) | `K<N>` |
+| Branch | `exp/E<N>-slug` | `kaggle/K<N>-slug` |
+| Result tag | `E<N>-result` | `K<N>-result` |
+| Cut from | `baseline-v1` | `baseline-v1` |
+| Merges to | `main` (if kept) | `kaggle-main` only — **never `main`** |
+| Quarantined code | n/a | `src/kaggle/`, `scripts/kaggle/` (no outside module may import these) |
+
+**Hard rules.** `main` is production lineage and stays leakage-free forever — no `kaggle/*` branch
+ever merges into it. No leaderboard score or leakage-laden metric appears in `decisions.md` or
+gates any `E`/`DR`. Shared infrastructure (data prep, CV harness, `src/training/`, clean feature
+contracts) is imported by both tracks; competition-only/leaky feature logic lives only in
+`src/kaggle/`. `git log --grep "E"` returns only production work; `--grep "K"` only Kaggle. See
+DR-005 §4 for the full contract.

@@ -37,6 +37,26 @@ scientific story of the project from beginning to end.
 - **Chunk-aware, group-safe CV** is the default evaluation harness; no `chunk_id` may leak across
   train/validation.
 
+## Standing belief-tracking protocol (mandatory from DR-005 onward)
+
+Every experiment closes with a **Bayesian update block**, not just a pass/fail. For each major
+live hypothesis the experiment bore on, record: *prior belief → new evidence → posterior belief →
+confidence → why it moved (or didn't)*. The point is to make belief revision explicit and
+auditable, so the roadmap is re-derived from current beliefs rather than executed on inertia. A
+passed gate is not a mandate to run the next pre-registered experiment; the next experiment is
+whichever one has the highest expected information gain *given the updated posteriors*.
+
+## Two research tracks (defined in DR-005)
+
+This project runs **two separate optimization programs that must never cross-contaminate**:
+- **Production track (primary)** — honest, leakage-free, deployable, case-study quality. Canonical
+  log: this file (`decisions.md`), entries `DR-NNN`, experiments `E<N>`. Lineage on `main`.
+- **Kaggle track (secondary)** — leaderboard optimization where competition rules permit, including
+  features the production charter forbids. Canonical log: `docs/research/kaggle_decisions.md`,
+  experiments `K<N>`. Never merges to `main`.
+The hard wall: **no metric computed with a leakage-laden or competition-only feature may ever
+appear in this file or inform any `DR`/`E` decision.** See DR-005 §4 for the full contract.
+
 ---
 
 ## DR-001 — Foundational diagnosis: is the model representation-limited or information-limited?
@@ -316,10 +336,149 @@ scientific story of the project from beginning to end.
 
 ---
 
+## DR-005 — Post-E1 Bayesian update, adversarial review, and roadmap revision
+
+- **Date:** 2026-06-27
+- **Role:** Interpretation entry (Opus). No code. Updates beliefs from E1 evidence, stress-tests
+  E1's conclusions, re-evaluates the roadmap, and establishes the two-track research structure.
+
+### §1 — Bayesian update (mandatory block)
+
+| Hypothesis | Prior (pre-E1) | New evidence from E1 | Posterior | Confidence | Why it moved |
+|---|---|---|---|---|---|
+| **H_repr: model is representation-limited** (failure-relevant measurement signal exists that global-mean compression destroys) | Leading, Medium | A finer per-part representation added +0.009 OOF MCC, 4/5 folds. BUT the encoding conflated measurement *values* with station *presence/missingness*. | **Leading but unconfirmed.** Reframed: the gain is real-ish; its *source* is unproven. | Medium (unchanged) | E1 confirmed "finer per-part features help a little," which is *consistent* with H_repr but does **not** isolate it from a routing-granularity explanation. The registered hypothesis was not actually tested cleanly. |
+| **H_info: model is information-limited** (honest non-leaky ceiling ≈ 0.15–0.16) | Primary competitor, Plausible | OOF MCC reached 0.1627, just past the top of the proposed band. | **Weakened, not killed.** | Medium | We exceeded 0.16 but by a hair, and partly via a possibly-routing channel. A ceiling near ~0.16–0.17 is still fully consistent with the data. |
+| **H_splitgain: split-gain importance is a trap here** (high gain, ~0 real contribution for sensor aggregates) | Asserted from prior ablation | Sensors took **66.8%** of split-gain while delivering only **+0.009** real OOF MCC — the trap reproduced live. | **Strengthened.** | High | We watched the exact predicted dissociation (huge gain, tiny honest delta). Split-gain magnitude is now formally inadmissible as evidence of contribution in this project. |
+| **H_nonstat: temporal non-stationarity is the dominant variance source** | Retained, secondary | dataset_h fold MCC spread ≈ 0.05 (0.135–0.185); the entire E1 gain is 0.009 — the fold spread is ~5× the effect. | **Strengthened, promoted toward primary limiter.** | High | A real, dominant non-stationarity means any sub-σ in-CV gain is fragile to time shift. This raises, not lowers, the value of a temporal test — but only of a *clean* effect (see §3). |
+| **H_localized: signal is in specific stations** (a sub-claim of H_repr) | New (from E1 importance) | Top feature `sensor_mean_L3_S33`: absent-parts fail at 1.93% vs 0.50% for visitors (4× **presence** signal). S30/S29 show ~neutral presence (ratio ~1.1). | **Split verdict.** S33's importance is plausibly *presence/routing*; S30/S29 plausibly *value*. | Low–Medium | Direct inspection shows the top driver is a missingness indicator, not a measurement anomaly — the cleanest single piece of evidence that E1 is confounded. |
+
+### §2 — Adversarial review (treat E1 as someone else's work; try to falsify)
+
+- **Directly supported:** (a) Adding the 52-feature block raises OOF MCC from 0.1534 to 0.1627.
+  (b) The improvement is fold-consistent (4/5), not a single-fold artifact. (c) The split-gain
+  trap recurred. These are robust to re-analysis.
+- **Merely plausible (not established):** (a) That the gain reflects *recovered measurement
+  information* (H_repr). (b) That specific stations carry localized *anomaly* signal. Both are
+  consistent with the data but not isolated from the presence/routing alternative.
+- **Unsupported by E1 as run:** (a) "feature_mean was washing out localized measurement signal" —
+  E1 cannot show this, because its top contributor (S33) is a *presence* indicator, and presence
+  was never in feature_mean to begin with. (b) Any magnitude claim derived from the 66.8%
+  split-gain share — inadmissible per H_splitgain.
+- **Alternative explanations still standing:**
+  1. **Routing-granularity, not representation.** The NaN-passthrough lets LightGBM read
+     per-station *presence*. dataset_h encodes routing only at the path/transition level; E1 may
+     simply have given it finer presence flags. If so, H_repr is *false* and the correct reframe is
+     "the production model is routing-granularity-limited," pointing future work at presence/path
+     encodings (cheap, no measurement values) rather than measurement representations.
+  2. **A single global second moment does the work.** `sensor_std` (one scalar) ranked 8th. It is
+     possible most of +0.009 is just "global dispersion helps," with the 50 station means being
+     mostly split-gain-trap noise. This is the most deflationary explanation and is currently
+     untested.
+  3. **Fold-alignment artifact.** Given H_nonstat (fold spread 5× the effect), a +0.009 that
+     happens to land positive in 4/5 random-group folds is not strongly distinguishable from a
+     non-stationarity ripple. Under a naive null, P(≥4/5 same sign) ≈ 0.19 — not negligible.
+- **Verdict:** E1 cleared its (correctly recalibrated) bar to *continue*, but it did **not**
+  confirm the registered hypothesis. It produced a real-but-small effect of **unknown mechanism**.
+
+### §3 — Roadmap re-evaluation: is E2 still the highest-information experiment?
+
+**No.** E2 (temporal durability of the *full E1 feature set*) is no longer the top-VOI move, for
+three reasons:
+1. **E1 introduced a confound that E2 cannot resolve.** A temporal test of the full block would
+   tell us whether *something* survives out-of-time, but not *which channel* (value vs presence vs
+   global-std). We would spend the costlier experiment (a temporal-split harness must be built)
+   testing a quantity we can't interpret.
+2. **The cheapest experiment now also resolves the most important uncertainty.** A pure in-CV
+   **decomposition** reuses the existing E1 pipeline (≈5 min/arm, no new harness) and directly
+   attributes the +0.009 to its sources. It tests the *actual* DR-001 hypothesis that E1 conflated.
+3. **You should temporally test the winning arm, not the confounded bundle.** Mechanism must
+   precede durability: carry only the channel that survives decomposition into E2.
+
+**Revised next experiment — E1a/E1b/E1c decomposition (in-CV, same harness as E1):**
+- **Arm A — global-dispersion-only:** dataset_h + `sensor_std` (+ `sensor_nonull_count`). Tests
+  alternative-explanation #2. If this alone recovers most of +0.009, H_repr is *not* what's
+  helping.
+- **Arm B — presence-only:** dataset_h + 50 per-station *presence flags* (no measurement values).
+  Tests alternative-explanation #1 (routing-granularity).
+- **Arm C — value-only (missingness-neutralized):** dataset_h + 50 per-station means with missing
+  entries imputed so the NaN channel carries no information (e.g. per-station median fill), values
+  present only where genuinely measured. Isolates H_repr proper.
+- **Comparator for all arms:** dataset_h (0.1534). **Reference ceiling:** full E1 (0.1627).
+- **Interpretation rule (pre-registered):** attribute +0.009 across A/B/C by their individual
+  uplift. If B ≫ C → routing-granularity (reframe H_repr, redirect to path/presence work). If
+  C ≳ B and C ≫ A → genuine measurement representation (H_repr supported, proceed to representation
+  phase). If A alone ≈ full E1 → the effect is a single global scalar (smallest, cheapest
+  conclusion; representation phase unjustified).
+- **Cost:** ~3 short training runs, no new infrastructure. Highest information per unit effort.
+
+**E2 is retained but resequenced and redesigned:** after decomposition, build the forward-chaining
+out-of-time split and apply it to *the winning arm only*. Its kill-power (H_nonstat predicts
+fragility) is exactly why it must test a clean, interpretable feature — otherwise a temporal null
+is as ambiguous as E1's positive. E1′ (sensors-alone vs collapsed baseline) is **subsumed** by the
+decomposition and retired as a separate item.
+
+### §4 — Two-track research structure (Production vs Kaggle)
+
+The project now has two legitimate, non-overlapping optimization objectives. They coexist under
+one repository but with an enforced contamination wall.
+
+- **Repository structure.**
+  - Shared, track-neutral infrastructure stays where it is: `src/features/core_pipeline.py`,
+    `src/training/` (cv, modeling, summary), `src/utils/`, clean feature builders
+    (`dataset_h_pipeline.py`). Both tracks import these.
+  - Production-only consumers (`src/inference/`, `src/monitoring/`, `src/evaluation/decision_*`)
+    stay as-is.
+  - Kaggle-only code is **quarantined** under a dedicated namespace — `src/kaggle/` (+
+    `scripts/kaggle/`) — which may contain competition-only / leakage-laden feature logic. **No
+    module outside `src/kaggle/` may import from `src/kaggle/`.** The existing
+    `LEAKY_FEATURE_PREFIXES` exclusion in `FeaturePipeline` remains the runtime guard on the
+    production side.
+- **Branch strategy.**
+  - Production: unchanged — `exp/E<N>-slug` cut from the immutable `baseline-v1`, merge-or-abandon
+    into `main` per `git_workflow.md`. `main` = production lineage, forever leakage-free.
+  - Kaggle: `kaggle/K<N>-slug`, also cut from `baseline-v1` (same clean anchor), but Kaggle results
+    **never merge to `main`.** They are preserved exactly like production dead-ends — `K<N>-result`
+    tag + PR — and, if an integration lineage is wanted, merged into a separate long-lived
+    `kaggle-main` branch, never `main`.
+- **Experiment numbering.** Disjoint prefixes are the join key and the firewall: production `E<N>`
+  / `DR-NNN`; Kaggle `K<N>` / its own `KDR-NNN`. A grep for `E*` never returns Kaggle work and
+  vice versa.
+- **Shared vs isolated code.** Shared: data prep, CV harness, model training utils, S3/IO,
+  clean feature contracts. Isolated: anything leakage-laden or competition-specific (Kaggle), and
+  the production decision/monitoring layer (production). Rule of thumb: *if a function could ever
+  compute a number that lands in a leaderboard submission via a forbidden feature, it lives in
+  `src/kaggle/`.*
+- **Shared vs isolated documentation.** Shared: the charter constraints, architecture overview,
+  and the single Git protocol (`git_workflow.md`, extended with the two namespaces). Isolated and
+  canonical-per-track: `decisions.md` (production) vs `kaggle_decisions.md` (Kaggle). **Cross-track
+  citation of *results/metrics* is forbidden**; cross-track citation of *shared infrastructure
+  changes* is allowed and encouraged.
+- **The invariant (non-negotiable):** Production decisions are gated **only** by honest OOF/CV MCC
+  on leakage-free features. Kaggle leaderboard scores live **only** in `kaggle_decisions.md` and
+  never inform a `DR`/`E` decision. The public-LB ~0.50 remains a leakage ceiling, never a
+  production target.
+
+### §5 — Decision & confidence
+
+- **Decision:** Do **not** authorize E2 next. Authorize the **E1a/E1b/E1c decomposition** as the
+  next experiment (pending user ratification of the reorder, consistent with DR-002's "every result
+  returns to Opus before the next is authorized"). Retire E1′ as subsumed. Stand up the two-track
+  structure before any Kaggle work begins.
+- **Confidence:** **High** that E1 is mechanistically confounded and that decomposition dominates
+  E2 in expected information per unit effort. **Medium** that a genuine measurement-representation
+  signal exists at all (H_repr unconfirmed; the deflationary explanations are live). **High** that
+  non-stationarity (H_nonstat) is the binding risk any surviving effect must clear.
+- **Next Action:** On user go-ahead, hand Sonnet the decomposition (three arms, in-CV, existing
+  harness). Hold E2 until a clean channel is identified. Keep Kaggle work off `main`.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
-| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS** — OOF MCC 0.1627 (+0.009, 4/5 folds) |
-| E2 | Gate | Does the E1 additive gain survive out-of-time? | Blocked on E1 pass |
-| E1′ | Conditional diagnostic | Sensors-alone vs. collapsed baseline (why a null?) | Blocked on E1 fail + relevance |
+| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (mechanism confounded)** — OOF MCC 0.1627 (+0.009, 4/5 folds); see DR-005 |
+| E1a/b/c | **Decomposition (new top priority)** | Is the +0.009 from global dispersion / station presence / station values? | **Designed (DR-005), next to run** |
+| E2 | Gate (resequenced + redesigned) | Does the *winning decomposed channel* survive out-of-time? | Blocked on decomposition identifying a clean channel |
+| E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
+| K-track | Separate program | Leaderboard optimization (competition rules permit) | Structure defined (DR-005 §4); no experiment run |
