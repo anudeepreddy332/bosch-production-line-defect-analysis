@@ -606,14 +606,179 @@ one repository but with an enforced contamination wall.
 
 ---
 
+## DR-007 — Causal reinterpretation after decomposition: the gain is structural, not measurement
+
+- **Date:** 2026-06-27
+- **Role:** Interpretation entry (Opus). No code. Re-reads the whole project's leading hypothesis
+  in light of E1a/b/c, performs a manufacturing-level mechanism analysis of "presence," ranks the
+  next research questions by value-of-information, and formally separates the two tracks.
+
+### §1 — Bayesian update (hypotheses *replaced*, not merely re-weighted)
+
+Attribution arithmetic (Venn over E1's +0.00933 OOF gain; both channels vs dataset_h):
+- shared (presence ∩ value) = E1b+E1c−E1 = **+0.00511 (55%)**
+- presence-unique = E1−E1c = **+0.00293 (31%)**
+- value-unique = E1−E1b = **+0.00129 (14%)** — and this is an *over*estimate, because E1c's
+  median-fill leaves a residual "exactly-median = non-visitor" tell, so some of E1c's signal is
+  still presence. True value-unique is **< 14%**.
+- The channels are strongly **sub-additive** (orthogonal would give +0.0144; actual +0.0093) →
+  presence and value are largely **redundant proxies for one shared latent**.
+
+| Hypothesis | Prior | Posterior | Confidence | Why it moved |
+|---|---|---|---|---|
+| **H_repr: model is measurement-representation-limited** (failure signal in sensor *values* that global-mean compression destroyed) — *was the project's leading hypothesis since DR-001* | Leading | **DEMOTED to minor.** Value contributes < 14% uniquely, is redundant with presence, and is non-stationary (regresses on fold 3). | 0.20 | The clean presence arm (E1b) reproduces 86% of the gain with *zero* measurement values. Recovering measurements is not what's helping. The founding hypothesis is substantially falsified as the *primary* driver. |
+| **H_struct: model is structural/routing-encoding-limited** (dataset_h compresses routing into target-rates; raw per-station *presence* structure carries additional leakage-safe failure signal) — *NEW, replaces H_repr as leading* | (did not exist) | **ADOPTED as leading.** | 0.70 | E1b (presence-only) is the strongest, most consistent arm (86% of gain, 5/5 folds, only −0.001 below the full E1 ceiling) and 55% of the gain is a shared structural latent. |
+| **H_info: honest leakage-free ceiling ≈ 0.16–0.17** | Weakened (DR-005) | **Re-strengthened.** E1 did not open a new information channel; it re-encoded the *existing* routing channel better. No new physics was added. | 0.65 | The whole project's signal remains routing/structure; measurements add ~nothing durable. The leakage-free ceiling looks structural and near where we are. |
+| **H_splitgain: split-gain importance is inadmissible here** | Strengthened | **Strongly strengthened — now near-certain.** | 0.90 | The *inverse trap*, measured cleanly: E1b delivers 86% of the honest gain with **7%** of the split-gain; E1c carries **58%** of split-gain for less honest gain. Gain magnitude is anti-correlated with honest contribution. |
+| **H_nonstat: non-stationarity is the binding risk; the value channel specifically is non-stationary** | Strengthened, secondary | **Strengthened; promoted to the gating risk.** Fold 3: value (E1c) regresses −0.005 vs dataset_h while presence (E1b) holds (+0.0006). | 0.70 | Presence (structure) looks temporally robust *within random-group CV*; value does not. Whether presence's robustness survives a *true out-of-time* split is now the central open question. |
+| **H_value_durable: measurement values add durable, unique signal** | (implicit in H_repr) | **Weakened.** | 0.25 | Value-unique < 14% and it is the channel that breaks on fold 3. |
+
+**Net:** the project's founding diagnosis is overturned. We are not measurement-representation-
+limited; we are **structural/routing-encoding-limited**, and the residual modeling headroom is in
+*how routing structure is exposed to the model*, not in recovering sensor measurements.
+
+### §2 — Mechanism analysis: what does "presence" mean on the line? (manufacturing terms)
+
+Grounding fact: of 50 station groups, **0 are universal (>95%), 8 are common (50–95%), 34 are
+optional/variant (5–50%), 8 are rare (<5%).** This is a heavily **variant-structured** line — most
+operations are conditional, not mandatory. The strongest absence→failure signals are S33/S34
+(94% visited; the ~6% that skip them fail at ~4× the rate).
+
+Candidate mechanisms for why presence predicts failure (not collapsed into "routing"):
+
+1. **Manufacturing variants / product types** — presence pattern ≈ which product variant (different
+   parts need different operations). *Fits:* 34/50 optional stations is exactly a variant signature;
+   variants are stable structural attributes, which explains presence's temporal robustness vs
+   value's fold-3 break. *Contradicts:* dataset_h's path target-rates should already capture pure
+   variant base-rates — yet E1b adds gain, so it's variant×station *interactions*, not just variant
+   identity. *Confidence: 0.60.*
+2. **Routing through parallel equipment/lines** — presence ≈ which physical line/machine processed
+   the part; some equipment is higher-failure. *Fits:* L0 entry cluster (S0/S1/S8, ~57% visited)
+   looks like a line selector with a modest failure differential. *Contradicts:* same as above —
+   pure line base-rate is partly in dataset_h; the residual must be finer interactions.
+   *Confidence: 0.55.*
+3. **Skipped near-mandatory operations** — absence of a normally-present step is itself an anomaly
+   or defect cause. *Fits:* S33/S34 are 94%-visited operations whose ~6% absence carries a 4×
+   failure signal — the textbook "a part that skipped a key step is bad." Most operationally
+   actionable. *Contradicts:* can't yet distinguish "skipped a step" from "a rare high-failure
+   variant that legitimately bypasses S33" using presence alone. *Confidence: 0.50.*
+4. **Inspection / test stages** — presence ≈ the part was measured/tested there; absence can mean
+   "not inspected → defects slip through" or "routed to extra inspection because marginal." *Fits:*
+   S33/S34 absence→failure is consistent with skipped inspection. *Contradicts:* we lack station
+   metadata to label inspection vs production stations; direction is ambiguous. *Confidence: 0.40.*
+5. **Rework loops** — a part that failed an in-line check is rerouted, visiting extra stations.
+   *Fits:* presence of rework-associated stations → higher failure would match. *Contradicts:*
+   rework manifests as **revisits/back-flow**, which single per-station presence flags (one row per
+   part) largely *cannot represent* — so this is unlikely to be what E1b is reading.
+   *Confidence: 0.30.*
+6. **Optional conditional process steps** (distinct from fixed variants) — a step invoked only when
+   the part's in-line state triggers it. *Fits:* would produce presence→failure for "trigger"
+   stations. *Contradicts:* hard to separate from variants without process docs; if it were a
+   *dynamic* response to transient state it should be more temporally variable than we observe.
+   *Confidence: 0.45.*
+
+**Reading:** presence is most consistent with **stable structural attributes** — variants (1) and
+line/equipment routing (2) — which explains its temporal robustness, **plus** a small set of
+**high-signal near-mandatory skips** (3/4, e.g. S33/S34) that are locally very predictive. It is
+*not* well explained by rework (5). The honest summary: "presence" is a **variant/routing signature
+with a few informative skipped-operation flags**, not a single mechanism.
+
+### §3 — Value-of-information ranking of the next five research questions
+
+Ranked by *uncertainty reduction*, not expected MCC. Temporal validation is included but justified,
+not defaulted.
+
+1. **Does the presence signal (E1b) survive a true out-of-time / forward-chaining split?**
+   *Highest VOI.* It tests the now-gating risk (H_nonstat) directly, on a **deconfounded clean
+   channel**, with the strongest kill-power: collapse → the whole E1 line is a CV artifact, stop;
+   survival → a durable, leakage-free, deployable structural feature, strong green light. This is
+   #1 *now* specifically because the decomposition removed the confound that correctly demoted it
+   in DR-005 — not by inertia. Run it multi-arm (dataset_h vs E1b vs E1c) so the same split also
+   tests whether value's fold-3 fragility generalizes out-of-time.
+2. **Is E1b's gain genuinely new structure, or an artifact of dataset_h under-encoding routing?**
+   If a fairer/richer routing encoding of dataset_h absorbs E1b's gain, the finding is "improve the
+   routing features," not "add presence." Decision-relevant (changes *what* to build) and cheap
+   (reuse harness). Can be folded in as an arm of #1.
+3. **Mechanism resolution of the high-signal stations** (classify S33/S34 etc. as variant /
+   line / skip / inspection via visit-rate, line position, absence-failure structure). Reduces
+   *explanatory* uncertainty and drives the case-study narrative + which presence flags to keep;
+   partly limited by absent station metadata.
+4. **Is there any clean, durable measurement-value signal once presence is fully removed?**
+   (E.g., within-path or all-stations-present subsets.) Likely confirms value is weak → low
+   expected surprise, hence lower VOI, but it closes out H_repr honestly.
+5. **Presence-feature parsimony / explainability** — the minimal subset of presence flags that
+   retains the gain, for a deployable and auditable feature set. Refinement; lowest uncertainty
+   reduction but high deployment value once #1 passes.
+
+### §4 — Formal, permanent Production/Kaggle separation
+
+This is now ratified (was designed in DR-005 §4). Enforcement is added so contamination is
+*structurally* prevented, not merely promised:
+
+- **Two canonical logs, never cross-citing results:** `decisions.md` (Production, `DR`/`E`) and the
+  new `docs/research/kaggle_decisions.md` (Kaggle, `KDR`/`K`). Created as a charter skeleton in this
+  commit; no Kaggle experiment has run.
+- **Code quarantine:** competition-only/leakage-laden logic lives only under `src/kaggle/` +
+  `scripts/kaggle/`; nothing outside may import it. Production keeps its `LEAKY_FEATURE_PREFIXES`
+  runtime guard.
+- **Git firewall:** Production `exp/E*` → `main`; Kaggle `kaggle/K*` → `kaggle-main`, **never**
+  `main`. Disjoint ID prefixes make `git log --grep` track-pure. Detail in `git_workflow.md`.
+- **The one invariant:** *No metric computed with a leakage-laden or competition-only feature may
+  appear in `decisions.md` or gate any `DR`/`E` decision.* The leaderboard ~0.50 is a leakage
+  ceiling, never a production target. A pre-merge contamination checklist is added to
+  `git_workflow.md`.
+- **Where E1 sits:** entirely Production. Presence/value features are leakage-safe (computable from
+  one part's own raw record at scoring time), so the E1 line stays on the Production track.
+
+### §5 — Deliverable: the next experiment
+
+**Recommend: E2 (redesigned) — out-of-time durability of the presence channel, multi-arm.**
+Under a single forward-chaining / time-ordered split (train on earlier `start_time`, validate on
+later), evaluate three arms: **dataset_h (baseline), E1b (presence-only, the candidate),
+E1c (value-only)**. Pre-register the durability bar (e.g., presence retains ≥ ~70–80% of its in-CV
+uplift and keeps the ordering out-of-time).
+
+**Why it has the highest expected information gain:**
+- It attacks the **single gating uncertainty** (H_nonstat) on the **clean, deconfounded** channel
+  the decomposition isolated — so the result is interpretable, unlike a temporal test of the old
+  confounded E1 bundle.
+- **Maximum kill-power per unit effort:** one experiment either *terminates* the representation/
+  structure line (presence is a CV artifact) or *clears it for deployment* (durable, leakage-free).
+- Adding E1c as a co-arm answers, at zero extra harness cost, whether value's fold-3 non-
+  stationarity is a true out-of-time effect — folding VOI #1 and part of #4 into one run.
+- It is correctly sequenced *now*: the only prior objection to E2 (E1 was mechanistically
+  confounded) has been resolved by E1a/b/c.
+
+**Decision:** Do not pursue measurement-representation engineering (H_repr demoted). Hold mechanism
+analysis (VOI #3) and value-isolation (#4) until durability is known. Authorize the redesigned E2
+next, pending user go-ahead. Build the Kaggle track only when a leaderboard objective is actually
+opened — its scaffold now exists and is firewalled.
+
+### §6 — Belief-state table
+
+| Hypothesis | Status | Confidence |
+|---|---|---|
+| H_struct: structural/routing-encoding-limited (presence drives the gain) | ↑ New leading | 0.70 |
+| H_repr: measurement-representation-limited (values drive the gain) | ↓↓ Demoted/replaced | 0.20 |
+| H_info: honest leakage-free ceiling ~0.16–0.17 | ↑ Re-strengthened | 0.65 |
+| H_splitgain: split-gain inadmissible (inverse trap shown) | ↑ Near-certain | 0.90 |
+| H_nonstat: non-stationarity is the gating risk; value channel non-stationary | ↑ Promoted to gate | 0.70 |
+| H_value_durable: values add durable unique signal | ↓ Weakened | 0.25 |
+| Presence = pure routing | ? Unresolved (variant+skip mix more likely) | 0.45 |
+
+- **Next Action:** Return control to user. On go-ahead, hand Sonnet the redesigned multi-arm E2
+  (out-of-time durability of E1b, with dataset_h and E1c co-arms). Stop here.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
-| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (mechanism confounded)** — OOF MCC 0.1627 (+0.009, 4/5 folds); see DR-005 |
-| E1a | Decomposition arm | Global dispersion only (`sensor_std` + count) | **DONE** — OOF 0.1555, 23% of E1 gain, 3/5 folds, below threshold |
-| E1b | Decomposition arm | Presence only (50 binary station flags) | **DONE** — OOF 0.1614, 86% of E1 gain, 5/5 folds, B-leads |
-| E1c | Decomposition arm | Value only (station means, missingness neutralized) | **DONE** — OOF 0.1598, 69% of E1 gain, 4/5 folds, fold-3 regresses |
-| E2 | Gate (resequenced + redesigned) | Does the *winning decomposed channel* survive out-of-time? | Blocked on decomposition identifying a clean channel |
+| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **PASS (confounded)** — OOF 0.1627; mechanism resolved by E1a/b/c |
+| E1a | Decomposition arm | Global dispersion only | **DONE** — OOF 0.1555, 23% of gain, below threshold (not the mechanism) |
+| E1b | Decomposition arm | Presence only (50 binary flags) | **DONE** — OOF 0.1614, 86% of gain, 5/5 folds — **winning channel** |
+| E1c | Decomposition arm | Value only (missingness neutralized) | **DONE** — OOF 0.1598, ≤14% unique, fold-3 regresses (non-stationary) |
+| E2 | Gate (redesigned, **top priority**) | Does presence (E1b) survive a true out-of-time split? Co-arms dataset_h, E1c | **Designed (DR-007 §5), next to run** |
 | E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
-| K-track | Separate program | Leaderboard optimization (competition rules permit) | Structure defined (DR-005 §4); no experiment run |
+| K-track | Separate program | Leaderboard optimization | Scaffolded + firewalled (DR-007 §4); no experiment run |

@@ -130,4 +130,23 @@ ever merges into it. No leaderboard score or leakage-laden metric appears in `de
 gates any `E`/`DR`. Shared infrastructure (data prep, CV harness, `src/training/`, clean feature
 contracts) is imported by both tracks; competition-only/leaky feature logic lives only in
 `src/kaggle/`. `git log --grep "E"` returns only production work; `--grep "K"` only Kaggle. See
-DR-005 §4 for the full contract.
+DR-005 §4 and DR-007 §4 for the full contract.
+
+### Contamination checklist (run before any merge to `main`)
+
+A change may merge to `main` only if **all** are true. Any "no" → it is Kaggle work, route it to
+`kaggle/K*` / `kaggle-main` instead.
+
+1. **Feature provenance:** every feature is computable from a single part's own raw record at
+   scoring time — no record-adjacency, timing-to-neighbor, test-order, or duplicate/concat features
+   (the `LEAKY_FEATURE_PREFIXES` family). 
+2. **Metric provenance:** every reported MCC/threshold was computed on labeled OOF/CV data with the
+   chunk-aware group-safe harness — never on unlabeled production data, never with a leaky feature.
+3. **No import of `src/kaggle/`** anywhere in the changed code outside `src/kaggle/` itself.
+4. **No leaderboard number** appears in `decisions.md` or in any `DR`/`E` rationale.
+5. **Log routing:** the change's scientific record lands in `decisions.md` (`DR`/`E`), not
+   `kaggle_decisions.md`.
+
+If a single experiment produces both an honest production result and a leaky leaderboard variant,
+they are **two experiments** (`E*` and `K*`) on **two branches**, recorded in **two logs** — never
+one commit.
