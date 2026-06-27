@@ -196,10 +196,76 @@ scientific story of the project from beginning to end.
 
 ---
 
+## DR-004 — E1 implementation pre-registration and success-criteria recalibration
+
+- **Date:** 2026-06-27
+- **Research Question:** (Carries DR-002 E1 verbatim.) Does a leakage-safe, information-preserving
+  sensor representation add durable OOF MCC over `dataset_h` (0.1534) on the existing chunk-aware
+  CV harness?
+- **Success-criteria recalibration (Opus instruction, pre-run):**
+  DR-002 stated a formal statistical bar (>2× fold-σ). Opus has recalibrated: **optimize for
+  information gain, not statistical significance.** A small but directionally consistent and
+  fold-repeatable improvement constitutes sufficient evidence to continue. A large but single-fold-
+  driven improvement is insufficient. Failure is defined as zero or negative directional shift, or
+  a shift that disappears when the outlier fold is removed.
+  - *Revised success:* OOF MCC > 0.1534 AND the improvement is directionally consistent across
+    ≥ 3 of 5 folds (i.e., not driven by a single fold swing). The magnitude informs confidence,
+    not the go/no-go decision.
+  - *Revised failure:* OOF MCC ≤ 0.1534 regardless of fold pattern; OR OOF MCC > 0.1534 but
+    driven entirely by one fold (< 3 folds improved).
+- **Representation choice and justification (decided before seeing E1 results):**
+  The numeric file contains 968 sensor columns across **50 station groups** (L{line}_S{station}).
+  The existing `feature_mean` is a single global mean over all non-null readings — guaranteed to
+  wash out localized (single-station) anomalies. The chosen representation adds three things:
+  1. **Per-station means** (50 features, named `sensor_mean_L{l}_S{s}`): mean of non-null sensor
+     readings at each station. NaN for unvisited stations; LightGBM handles NaN natively via its
+     learned missing-value split direction — this means the missingness structure (which stations
+     a part visited) is automatically incorporated into the model's splits without any explicit
+     encoding, at zero additional cost.
+  2. **`sensor_nonull_count`** (int16): total number of non-null sensor readings for the part.
+     Captures measurement breadth / visit depth beyond what `station_count` (untracked in dataset_h)
+     would give.
+  3. **`sensor_std`** (float32): std across all non-null sensor readings. Captures distributional
+     spread — a part with high std has anomalous variation across stations; feature_mean alone
+     cannot distinguish uniform-but-high from variable-with-one-spike.
+  These 52 features are added additively to dataset_h's 16 features (total: 68). No routing
+  features are touched; no fold-level computation is needed (all are raw measurements).
+  **Why not PCA / autoencoders / raw matrix?** PCA/autoencoders are a second experimental variable
+  (architecture), making a null uninterpretable. The raw 968-column matrix dramatically inflates
+  feature count and training time, obscuring whether a null is "no signal" or "poor exposure."
+  Station means are the minimal representational unit that preserves the localized signal
+  hypothesis while remaining at interpretable scale.
+  **Why NaN-passthrough instead of mean-fill?** Mean-fill would collapse the missingness structure
+  back into a uniform value, reproducing the same information loss as `feature_mean`. NaN-
+  passthrough is strictly more informative and costs nothing in LightGBM.
+- **Implementation plan (committed to before results):**
+  - `scripts/build_dataset_e1.py`: reads `train_numeric.parquet` in batches (20k rows), computes
+    52 sensor features, merges with `data/features/dataset_h.parquet` on `Id`, writes
+    `data/features/dataset_e1.parquet`.
+  - `scripts/train_dataset_e1.py`: reads `dataset_e1.parquet`, trains LightGBM with identical
+    hyperparameters and CV config as `train_dataset_h.py` (same random_state, n_splits=5), writes
+    OOF predictions and importance, updates `outputs/training_summary.json`.
+  - No hyperparameter changes. No architectural changes. No modifications to dataset_h or its
+    training script.
+- **Confounds to watch:**
+  - Runtime / memory: 968 cols × 1.18M rows requires batched processing.
+  - Station sparsity: some stations may be visited by <1% of parts — verify they don't
+    introduce instability (LightGBM's min_child_samples=50 is already set conservatively).
+  - Fold σ (dataset_h): [0.1381, 0.1354, 0.1811, 0.1528, 0.1850] → σ ≈ 0.021. Folds 2 and 4
+    are consistently high; if E1 gain concentrates there, note it.
+- **Hypothesis status:** Pre-registered. Results pending.
+- **Evidence Collected:** None yet.
+- **Outcome:** Pending.
+- **Decision:** Pending.
+- **Confidence Level:** N/A (unrun).
+- **Next Action:** Implement, run, collect evidence, return to Opus.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
 |---|---|---|---|
-| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | Designed, not run |
+| E1 | Gate | Additive sensor signal over dataset_h, in-CV? | **Running** (branch exp/E1-additive-sensor-probe) |
 | E2 | Gate | Does the E1 additive gain survive out-of-time? | Blocked on E1 pass |
 | E1′ | Conditional diagnostic | Sensors-alone vs. collapsed baseline (why a null?) | Blocked on E1 fail + relevance |
