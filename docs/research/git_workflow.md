@@ -121,9 +121,15 @@ contamination firewall.
 | Experiment IDs | `E<N>` (diagnostics `E<N>p`) | `K<N>` |
 | Branch | `exp/E<N>-slug` | `kaggle/K<N>-slug` |
 | Result tag | `E<N>-result` | `K<N>-result` |
-| Cut from | `baseline-v1` | `baseline-v1` |
+| Cut from | `baseline-v1` | `kaggle-main` (seeded from `baseline-v1`, forward-merged from `main`) |
+| Long-lived line | `main` | `kaggle-main` (lazy; created at `K1`) |
 | Merges to | `main` (if kept) | `kaggle-main` only — **never `main`** |
+| Cross-merge | `main` → `kaggle-main` **allowed** | `kaggle-main` → `main` **forbidden** (only the §re-derivation gateway crosses) |
 | Quarantined code | n/a | `src/kaggle/`, `scripts/kaggle/` (no outside module may import these) |
+
+> **Revision (DR-008):** Kaggle branches now cut from `kaggle-main` (not `baseline-v1` as DR-005
+> provisionally stated), so the Kaggle track inherits Production advances by forward-merging `main`.
+> The reverse merge is forbidden; Production-bound Kaggle ideas use the re-derivation gateway below.
 
 **Hard rules.** `main` is production lineage and stays leakage-free forever — no `kaggle/*` branch
 ever merges into it. No leaderboard score or leakage-laden metric appears in `decisions.md` or
@@ -150,3 +156,24 @@ A change may merge to `main` only if **all** are true. Any "no" → it is Kaggle
 If a single experiment produces both an honest production result and a leaky leaderboard variant,
 they are **two experiments** (`E*` and `K*`) on **two branches**, recorded in **two logs** — never
 one commit.
+
+### The evidence valve and re-derivation gateway (DR-008)
+
+Production's protocol is strictly stronger than Kaggle's, so value flows asymmetrically:
+
+| What crosses | Prod → Kaggle | Kaggle → Prod |
+|---|---|---|
+| Ideas / hypotheses | free | free, but only as a **fresh pre-registered `DR`/`E`** (zero borrowed priors) |
+| Code (import) | free | forbidden (`src/kaggle/` is import-inward-only) |
+| Evidence / metrics | free | **forbidden** (never in `decisions.md`, never gates a `DR`/`E`) |
+| Features | free | only via the **re-derivation gateway** |
+
+**Re-derivation gateway** (the *only* inbound Kaggle→Production path): open a new `E<M>` with fresh
+`DR` pre-registration → re-implement the mechanism leakage-free (if impossible, it stays Kaggle-only
+forever) → re-validate on the chunk-aware honest-OOF harness → **discard the Kaggle number**, keep
+only the reproduced Production MCC → merge after the contamination checklist. A Kaggle result that
+cannot survive this gateway is, by definition, not a Production result.
+
+**Code valve enforcement:** before any merge to `main`,
+`grep -r "import.*kaggle" src/ scripts/ --include=*.py` (excluding `src/kaggle/`) must be empty.
+Wire into CI when `K1` opens.

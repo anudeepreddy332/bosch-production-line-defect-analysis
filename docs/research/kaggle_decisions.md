@@ -20,6 +20,29 @@ decision log (`decisions.md`) so the two optimization programs can never cross-c
 - The public-LB ~0.50 is a **leakage ceiling**, never a production target.
 - Kaggle code lives only under `src/kaggle/` + `scripts/kaggle/`; nothing outside may import it.
 
+## Flow between tracks (asymmetric by design — DR-008)
+
+Production is the source of scientific truth; this track is an optimization laboratory. Because the
+Production protocol is *strictly stronger* (leakage-free, pre-registered, chunk-aware honest OOF):
+
+- **Production → Kaggle is free.** This track may import the shared library and any clean Production
+  feature, build on Production OOF predictions, and cite Production conclusions directly. No
+  re-validation needed — anything that passed the stronger bar holds here.
+- **Kaggle → Production is never direct.** A leaderboard score is a *lead*, not *evidence*. To reach
+  Production a finding must pass the **re-derivation gateway**: a new `DR`/`E` is opened, the
+  *mechanism* is re-implemented leakage-free, and it is re-validated from scratch on the Production
+  harness. The Kaggle number is discarded; only the independently reproduced honest MCC counts. A
+  finding that cannot be made leakage-free **stays here permanently**.
+- **Ideas** may travel either way; what may not travel Kaggle→Production is the *credibility* a
+  leaderboard score lends an idea — that must be re-earned under the Production protocol.
+
+## Branching (DR-008)
+
+`kaggle/K<N>-slug` branches cut from **`kaggle-main`** (a lazy long-lived branch, created at `K1`,
+seeded from `baseline-v1` and kept current by forward-merging `main`). Results merge to
+`kaggle-main`, **never** `main`. This lets the Kaggle track inherit Production advances while the
+firewall to `main` stays absolute. See `git_workflow.md` for the full protocol.
+
 ## Conventions (mirror the production protocol, disjoint namespace)
 
 - Decisions numbered `KDR-NNN`; experiments `K<N>`; branches `kaggle/K<N>-slug` cut from

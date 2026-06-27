@@ -771,6 +771,147 @@ opened — its scaffold now exists and is firewalled.
 
 ---
 
+## DR-008 — Permanent two-track research architecture (Production = truth; Kaggle = laboratory)
+
+- **Date:** 2026-06-27
+- **Role:** Architectural decision (Opus). No code, no file moves, no branch creation. This is the
+  **permanent** design. It **supersedes** the provisional two-track sketches in DR-005 §4 and
+  DR-007 §4 — specifically it (a) fixes the Production↔Kaggle *flow asymmetry*, (b) defines the
+  Kaggle→Production *re-derivation gateway*, and (c) revises the Kaggle branch anchor from
+  "`baseline-v1`" to "`kaggle-main` (forward-merged from `main`)" so Kaggle can inherit Production
+  advances. Operational details mirrored to `git_workflow.md`; the Kaggle-side charter to
+  `kaggle_decisions.md`.
+- **Design Question:** How do the two programs diverge permanently so that Production stays the sole
+  source of scientific truth, Kaggle can optimize without ever contaminating Production, and value
+  still flows — ideas freely, evidence only through a one-way valve?
+
+### §0 — The governing principle (and why the asymmetry is correct)
+
+Production's protocol is **strictly stronger** than Kaggle's: leakage-free feature contract,
+pre-registration, chunk-aware group-safe CV, honest OOF MCC only. Kaggle's is **weaker by design**:
+leakage permitted, leaderboard-tuned, success = rank. From this single fact the entire architecture
+follows:
+
+- **Production → Kaggle: always allowed.** Anything that cleared the stronger bar is automatically
+  admissible in the weaker context. No re-validation needed.
+- **Kaggle → Production: never directly.** Clearing the weaker bar implies nothing about the
+  stronger one. A Kaggle result is a *lead*, not *evidence*. It enters Production only by being
+  re-implemented leakage-free and re-validated from scratch as a new `E` experiment.
+
+> **Production is the source of scientific truth. Kaggle is an optimization laboratory. A Kaggle
+> result is never accepted into Production until independently reproduced under the Production
+> protocol. The reverse flow is always allowed.**
+
+### §1 — Repository structure (no files move; this is the target layout)
+
+```
+src/
+  features/      SHARED  clean, leakage-free feature builders (core_pipeline, dataset_h_pipeline)
+  training/      SHARED  cv, modeling, summary  (the evaluation library)
+  utils/         SHARED  s3, logger, io  (track-neutral)
+  inference/     PROD    decision/serving consumers
+  monitoring/    PROD    drift/observability
+  evaluation/    PROD    decision-system
+  kaggle/        KAGGLE  QUARANTINE: competition-only / leakage-laden logic. Imports inward only.
+scripts/
+  *.py           PROD    E-track entry points
+  kaggle/        KAGGLE  K-track entry points
+docs/research/
+  decisions.md           PROD canonical log (DR / E)            ← source of truth
+  kaggle_decisions.md    KAGGLE canonical log (KDR / K)
+  git_workflow.md        SHARED protocol, two disjoint namespaces
+```
+
+`src/kaggle/` and `scripts/kaggle/` do not exist yet and are created lazily when `K1` begins.
+
+### §2 — Code-sharing matrix
+
+| Class | Examples | Shared? | Rule |
+|---|---|---|---|
+| Data ingestion | `prepare_data.py` (CSV→parquet) | ✅ neutral | both import |
+| Evaluation library | `src/training/cv.py`, `modeling.py`, `summary.py` | ✅ neutral | both import; *protocol* binding it differs per track |
+| Clean feature contracts | `core_pipeline.py`, `dataset_h_pipeline.py` | ✅ leakage-free | both import |
+| Utilities | `src/utils/*` | ✅ neutral | both import |
+| Production consumers | `inference/`, `monitoring/`, `evaluation/` | ➖ prod-only | Kaggle *may* import (harmless), need not |
+| **Leakage-laden / competition-only** | `mean_timediff_till_next_*`, record-adjacency, test-order, dup/concat magic, LB-probing, blend/submission tuning | ❌ **never shared** | lives only in `src/kaggle/`; **no module outside `src/kaggle/` may import it** |
+
+**The code valve:** imports flow Production → Kaggle only. `src/kaggle/` may import the shared
+library; **nothing in `src/`, `scripts/`, or production docs may import `src/kaggle/`.** This is the
+code-level enforcement of §0.
+
+### §3 — Flow matrix (the heart of the architecture)
+
+| What crosses | Production → Kaggle | Kaggle → Production |
+|---|---|---|
+| **Ideas / hypotheses** | ✅ free | ✅ free **but only as a fresh pre-registered `DR`/`E` hypothesis** — arrives with *zero* borrowed priors; must re-earn evidence |
+| **Code (by import)** | ✅ free | ❌ forbidden (no prod import of `src/kaggle/`) |
+| **Evidence / metrics** | ✅ free (Kaggle may cite/use prod OOF, MCC, conclusions) | ❌ forbidden — a Kaggle number may never appear in `decisions.md` or gate a `DR`/`E` |
+| **Features** | ✅ free (clean features usable as-is in Kaggle) | ⚠️ only via the **re-derivation gateway** (§4) |
+
+Idea ≠ evidence: an idea carries no metric, so it cannot contaminate. "Station presence matters"
+may travel either way. What may **not** travel Kaggle→Production is the *credibility* a Kaggle
+leaderboard score lends it — that must be rebuilt under the Production protocol.
+
+### §4 — The Kaggle → Production re-derivation gateway (the only inbound path)
+
+When a Kaggle lead looks worth productionizing:
+1. Open a **new** Production experiment `E<M>` with a **fresh `DR` pre-registration**. The Kaggle
+   origin is cited **only** in *Prior Reasoning / Alternatives* as motivation — never in *Evidence*.
+2. Re-implement the *mechanism* as a **leakage-free** feature passing the §2 contract (if it cannot
+   be made leakage-free, it stays Kaggle-only, permanently).
+3. Re-validate from scratch on the chunk-aware honest-OOF harness, pre-registered success bar.
+4. The Kaggle metric is **discarded**; only the independently reproduced Production MCC counts.
+5. Merge to `main` only after the §7 contamination checklist passes.
+
+A Kaggle result that cannot survive this gateway is, by definition, not a Production result.
+
+### §5 — Branch & merge strategy
+
+| | Production (primary) | Kaggle (laboratory) |
+|---|---|---|
+| Long-lived | `main` (truth, leakage-free forever) | `kaggle-main` (lazy; seeded from `baseline-v1`, kept current by forward-merging `main`) |
+| Experiment branch | `exp/E<N>-slug` ← `baseline-v1` | `kaggle/K<N>-slug` ← `kaggle-main` |
+| Result tag | `E<N>-result` | `K<N>-result` |
+| Merge | `exp/E*` → `main` (kept) / abandon+tag (dead end) | `kaggle/K*` → `kaggle-main` |
+| Cross-merge | `main` → `kaggle-main` **allowed** (forward integration; the evidence valve, code/feature flow) | `kaggle-main` → `main` **FORBIDDEN** (only the §4 gateway crosses) |
+
+`main` never contains a commit reachable only from `kaggle-main`. `git log --grep "E"` is
+Production-pure; `--grep "K"` is Kaggle-pure.
+
+### §6 — Numbering, logs, documentation
+
+- **Production:** decisions `DR-NNN`, experiments `E<N>` (diagnostics `E<N>p`), log `decisions.md`.
+- **Kaggle:** decisions `KDR-NNN`, experiments `K<N>`, log `kaggle_decisions.md`.
+- Each log is canonical and self-contained for its track; **neither cites the other's
+  results/metrics.** A pointer for *motivation* ("E9 motivated by lead noted in K3") is allowed;
+  importing K3's *number* as evidence is not.
+- Shared docs (charter constraints, architecture overview, `git_workflow.md`) are track-neutral.
+
+### §7 — Contamination prevention (enforcement, not just promise)
+
+1. **Code valve:** a grep guard (`grep -r "import.*kaggle" src/ scripts/ --include=*.py` excluding
+   `src/kaggle/`) must return empty before any merge to `main`; may be wired into CI.
+2. **Pre-merge contamination checklist** (5 gates) in `git_workflow.md` must pass for every `main`
+   merge.
+3. **Two-experiments rule:** one investigation that yields both an honest result and a leaky
+   leaderboard variant is **two** experiments (`E*` + `K*`), two branches, two logs — never one
+   commit.
+4. **Log-routing review:** any metric landing in `decisions.md` is checked to be honest-OOF on the
+   leakage-free contract.
+
+### §8 — Decision, confidence, next action
+
+- **Decision:** Adopt this as the permanent architecture. It is a documentation/contract change
+  only — no code moves, no branches created now (`src/kaggle/`, `scripts/kaggle/`, `kaggle-main`
+  are created lazily at `K1`). The Production line (E1/E1a/b/c, and next E2) is unaffected and
+  remains entirely on the Production track.
+- **Confidence:** **High.** The asymmetry is structurally justified (stronger bar dominates weaker),
+  and the valve is enforceable at the import and merge levels.
+- **Next Action:** Return control to user for **authorization of E2** (redesigned out-of-time
+  durability of presence, DR-007 §5). No further architecture work pending.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
@@ -781,4 +922,4 @@ opened — its scaffold now exists and is firewalled.
 | E1c | Decomposition arm | Value only (missingness neutralized) | **DONE** — OOF 0.1598, ≤14% unique, fold-3 regresses (non-stationary) |
 | E2 | Gate (redesigned, **top priority**) | Does presence (E1b) survive a true out-of-time split? Co-arms dataset_h, E1c | **Designed (DR-007 §5), next to run** |
 | E1′ | Conditional diagnostic | Sensors-alone vs collapsed baseline | **Retired** — subsumed by E1a/b/c |
-| K-track | Separate program | Leaderboard optimization | Scaffolded + firewalled (DR-007 §4); no experiment run |
+| K-track | Separate program | Leaderboard optimization | **Permanent architecture ratified (DR-008)**; scaffolded + firewalled; no experiment run |
