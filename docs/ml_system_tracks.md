@@ -6,9 +6,9 @@
 |-------|-------------|----------|-------|
 | Track 1 | Offline Research | 100% | Frozen (DR-015, branch `research/rp2-temporal-robustness` merged) |
 | Track 2 | Kaggle | 10% | Not started end-to-end |
-| Track 3 | Production | 100% | Pending freeze (cleanup complete; freeze tag pending) |
+| Track 3 | Production | 100% | Frozen (tag: `track3-frozen`, commit: `f743da3`) |
 
-**Current Active Track:** Phase 1 cleanup milestone — freeze Track 3, then open Kaggle
+**Current Active Track:** Track 2 (Kaggle) — open on `kaggle-main` branch
 
 ---
 
@@ -192,8 +192,8 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 | Track / View | Target | Current state |
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
-| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
-| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Complete**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics). State machine (pointer/cycle_id/batch_id/run_seq), append-only S3 upload (upload-then-advance), and Dashboard View A all wired. `run_drift_monitoring.py` reads production batches, not labeled data (score-distribution drift, single `risk_score` column). `validate_system.py` extended with `validate_production_inference()`. 5 batches scored (50,000 rows). Freeze-pending. |
+| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Ready for `dataset_h`**: `scripts/generate_submission.py` + `data/features/test_dataset_h.parquet` + `models/dataset_h_model.pkl` (Phase-2 payload) produce a valid 1,183,748-row submission locally (see `docs/dataset_h_submission_run.md`). Opens on `kaggle-main`. |
+| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Frozen** (tag: `track3-frozen`, commit: `f743da3`). 5 batches scored (50,000 rows). All DoD items met and validated (`validate_system.py` → `overall_pass: True`). |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Complete** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page. Renders predictions/risk scores (label-free, `Response`-absent verified) AND Evidently drift section (score, detected flag, drifted-column count, drift share, timestamp). Handles missing monitoring output gracefully. |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
 
@@ -256,8 +256,7 @@ Done only when every box below is true. The roadmap (next section) gates transit
       static-threshold-non-transfer caveat (the RP2 handoff), not a single in-CV number.
       *(T3-4: `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` updated)*
 
-*Status: all DoD items complete. Pending: freeze tag (`track3-frozen`) once this cleanup batch
-is committed.*
+*Status: all DoD items complete. **Frozen** — tag `track3-frozen` placed at commit `f743da3`.*
 
 ---
 
@@ -331,11 +330,12 @@ follow-up, not actioned here:
    updated with RP2 honest distribution (§7), label-free monitoring status (§9), and Track 3
    Achieved items (§12). `README.md` updated with RP2 distribution and Production Monitoring
    dashboard feature. Per-page View B relabel/rename remains open (see item 2).
-5. Track 2 (Kaggle submission) now has `scripts/generate_submission.py`, but needs (a) a
-   test-side feature-engineering script analogous to `build_dataset_{baseline,g,h}.py`, (b)
-   persisted OOF-safe rate-lookup tables so `dataset_g`/`dataset_h`/`meta_model` features can be
-   computed on test rows without leaking, and (c) a real training run to regenerate `models/*.pkl`
-   in the Phase-2 payload format. See `docs/kaggle_submission.md`.
+5. **Resolved for `dataset_h`** (see `docs/dataset_h_submission_run.md` and
+   `docs/runbooks/track2_kaggle_submission.md`). `scripts/generate_submission.py` +
+   `scripts/build_test_dataset_h.py` + `models/dataset_h_model.pkl` (Phase-2 payload) produce a
+   validated 1,183,748-row submission locally. Other models (`baseline`, `dataset_g`, `meta_model`)
+   still lack test-side feature tables and are not in scope for Track 2 opening. Track 2 opens on
+   `kaggle-main`.
 6. `CLAUDE.md`'s claim that "the dashboard and decision-system code already enforce this split"
    should be revisited once 1–2 are addressed, since it currently overstates the present state.
 

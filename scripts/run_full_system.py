@@ -59,17 +59,15 @@ if __name__ == "__main__":
     print(" - outputs/production/dataset_h/dataset_h_batch_stats_log.csv")
     print(" - outputs/monitoring/evidently_summary.json")
 
-from src.utils.s3_utils import upload_file
+    from src.utils.s3_utils import upload_file
 
-print("\n[START] Uploading to S3")
+    print("\n[START] Uploading to S3")
 
-upload_file("outputs/production_decision_summary.json", "outputs/production_decision_summary.json")
-upload_file("outputs/monitoring/evidently_summary.json", "outputs/monitoring/evidently_summary.json")
-# NOTE: Track 3's per-batch outputs (outputs/production/dataset_h/cycle=*/batch=*/
-# predictions.parquet) are intentionally NOT uploaded here yet -- they are append-only,
-# partitioned, per-batch files (one new path per run), not a single static file this
-# loop's hardcoded upload_file() calls can target. Wiring S3 upload for them (mirroring
-# the local cycle={n}/batch={n} partition into the S3 key, per tasks.md TASK 4) is a
-# separate follow-up, not done in this change.
+    upload_file("outputs/production_decision_summary.json", "outputs/production_decision_summary.json")
+    upload_file("outputs/monitoring/evidently_summary.json", "outputs/monitoring/evidently_summary.json")
+    # NOTE: Track 3 per-batch predictions are uploaded by run_production_inference.py
+    # (upload-then-advance, one partitioned key per batch). They are not re-uploaded here
+    # because this script runs run_production_inference.py as a subprocess and cannot know
+    # the resulting cycle/batch path after the fact.
 
-print("[OK] Upload to S3 complete")
+    print("[OK] Upload to S3 complete")

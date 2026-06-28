@@ -1,5 +1,13 @@
 # Production Readiness Audit — Bosch Production Line Performance
 
+> **HISTORICAL ARTIFACT — SUPERSEDED.** This audit was performed at commit `b96cd0d` (2026-06-24),
+> before Track 3 was built and frozen. All findings from §1's Executive Summary have since been
+> resolved: the World A/B gap is documented, the label-free production path is complete and
+> validated (`validate_system.py` → `overall_pass: True`, tag `track3-frozen` at `f743da3`),
+> and the Kaggle submission path works end-to-end for `dataset_h` (see
+> `docs/dataset_h_submission_run.md`). This document is retained as a historical record of the
+> pre-Track-3 state, not as a description of the current repository.
+
 **Auditor role:** Senior production ML systems architect / auditor
 **Audit date:** 2026-06-24
 **Branch audited:** `feature/production-readiness-audit` (forked from `main` @ `b96cd0d`)
