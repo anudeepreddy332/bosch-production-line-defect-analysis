@@ -5,10 +5,10 @@
 | Track | Description | Progress | State |
 |-------|-------------|----------|-------|
 | Track 1 | Offline Research | 100% | Frozen (DR-015, branch `research/rp2-temporal-robustness` merged) |
-| Track 2 | Kaggle | 10% | Not started end-to-end |
+| Track 2 | Kaggle | 15% | **Open** (KDR-001, 2026-06-28; branch `kaggle-main` @ `13ab858`). `dataset_h` submission path verified; no `K` experiment run yet |
 | Track 3 | Production | 100% | Frozen (tag: `track3-frozen`, commit: `f743da3`) |
 
-**Current Active Track:** Track 2 (Kaggle) — open on `kaggle-main` branch
+**Current Active Track:** Track 2 (Kaggle) — open on `kaggle-main`. Governance: `docs/research/kaggle_decisions.md` (`KDR-001`). Next: pre-register `K1` in `KDR-002`.
 
 ---
 
@@ -192,7 +192,7 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 | Track / View | Target | Current state |
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
-| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Ready for `dataset_h`**: `scripts/generate_submission.py` + `data/features/test_dataset_h.parquet` + `models/dataset_h_model.pkl` (Phase-2 payload) produce a valid 1,183,748-row submission locally (see `docs/dataset_h_submission_run.md`). Opens on `kaggle-main`. |
+| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Open** (`KDR-001`, 2026-06-28; `kaggle-main` @ `13ab858`). `dataset_h` submission path verified locally (`scripts/generate_submission.py` + `test_dataset_h.parquet` + `models/dataset_h_model.pkl`, 1,183,748 rows — `docs/dataset_h_submission_run.md`). No `K` experiment run yet. |
 | Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Frozen** (tag: `track3-frozen`, commit: `f743da3`). 5 batches scored (50,000 rows). All DoD items met and validated (`validate_system.py` → `overall_pass: True`). |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Complete** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page. Renders predictions/risk scores (label-free, `Response`-absent verified) AND Evidently drift section (score, detected flag, drifted-column count, drift share, timestamp). Handles missing monitoring output gracefully. |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
@@ -224,19 +224,22 @@ Done only when every box below is true. The roadmap (next section) gates transit
 
 ### Track 2 — Kaggle Submission — Definition of Done
 
-- [ ] `kaggle-main` branch + `src/kaggle/` / `scripts/kaggle/` created; `KDR-001` opened in
-      `kaggle_decisions.md` (lazy scaffold per DR-008).
+- [x] `kaggle-main` branch created (@ `13ab858`) + `KDR-001` opened in `kaggle_decisions.md`
+      (lazy scaffold per DR-008). `src/kaggle/` / `scripts/kaggle/` are created at the first `K`
+      experiment, not at opening (nothing to quarantine yet).
 - [ ] Test-side feature pipeline producing engineered test tables for every model in the path
       (baseline, g, h, meta). `dataset_h` test features exist; baseline/g/meta pending.
 - [ ] Persisted OOF-safe rate-lookup tables so g/h/meta features compute on test rows without leakage.
-- [ ] `models/*.pkl` regenerated in the Phase-2 payload format `generate_submission.py` requires
-      (current pickles are bare `LGBMClassifier`).
+- [ ] `models/*.pkl` in the Phase-2 payload format `generate_submission.py` requires. `dataset_h`
+      is already a valid payload (verified, `docs/dataset_h_submission_run.md`); baseline/g/meta pending.
 - [ ] One real end-to-end `submission.csv` produced — exactly `Id,Response`, row count matching
-      `sample_submission`.
+      `sample_submission`. Done for `dataset_h` locally (2,993 positives @ thr 0.91); not yet
+      submitted to Kaggle.
 - [ ] Firewall intact: no `src/kaggle/` import outside it; no leaderboard number in `decisions.md`
-      or any `DR`/`E`.
+      or any `DR`/`E`. **Verified at `KDR-001` opening** (code-valve grep empty).
 
-*Status: not started end-to-end (scaffolding + `dataset_h` test features only).*
+*Status: track **open** (`KDR-001`). Governance + branch scaffolding complete; submission pipeline
+mature for `dataset_h` only; full multi-model path and a live Kaggle submission remain.*
 
 ### Track 3 — Production Inference Simulation — Definition of Done
 
@@ -275,8 +278,9 @@ Transitions are gated on the Definition of Done above, not on judgment.
    overstatement fixes, CLAUDE.md "already enforce" revisit, `kaggle_decisions.md` branch-anchor
    line, the track-terminology glossary, and stray `_blend` artifact provenance/cleanup. **Gate to
    Phase 2:** no known doc/architecture inconsistency outstanding on `main`.
-4. **Phase 2 — Track 2 (Kaggle).** Open `K1` and execute the Track 2 DoD on `kaggle-main` only; the
-   firewall to `main` stays absolute.
+4. **Phase 2 — Track 2 (Kaggle). ← ACTIVE.** Track opened at `KDR-001` (2026-06-28); `kaggle-main`
+   created from `main` @ `13ab858`. Next: pre-register `K1` in `KDR-002`, then execute the Track 2
+   DoD on `kaggle-main` only; the firewall to `main` stays absolute.
 
 ---
 

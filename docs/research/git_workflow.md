@@ -129,7 +129,7 @@ contamination firewall.
 | Branch | `exp/E<N>-slug` | `kaggle/K<N>-slug` |
 | Result tag | `E<N>-result` | `K<N>-result` |
 | Cut from | `baseline-v1` | `kaggle-main` (seeded from `baseline-v1`, forward-merged from `main`) |
-| Long-lived line | `main` | `kaggle-main` (lazy; created at `K1`) |
+| Long-lived line | `main` | `kaggle-main` (created at track opening, KDR-001) |
 | Merges to | `main` (if kept) | `kaggle-main` only — **never `main`** |
 | Cross-merge | `main` → `kaggle-main` **allowed** | `kaggle-main` → `main` **forbidden** (only the §re-derivation gateway crosses) |
 | Quarantined code | n/a | `src/kaggle/`, `scripts/kaggle/` (no outside module may import these) |
