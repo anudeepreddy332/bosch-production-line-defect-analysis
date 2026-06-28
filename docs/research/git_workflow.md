@@ -103,6 +103,13 @@ DR-NNN ──designs──▶ E1, E2, E1p           (why / what / decision rule)
 ③ PR filled with the template; ④ decisions.md DR entry updated; ⑤ merge-or-abandon decision
 recorded. Missing any one → not done.
 
+**Continuous research programs (multi-experiment).** When several experiments are executed as one
+continuous program on a single research branch (e.g. RP2 = E2–E4 on
+`research/rp2-temporal-robustness`), the program closes with **one program-level PR + per-experiment
+`E*-result` tags + the decisions.md record landed on `main`**. Per-experiment PRs (checklist item ③)
+are **not** required retroactively for such a program — the program PR plus the result tags and DR
+entries preserve full traceability without rewriting history. Items ①②④⑤ still apply per experiment.
+
 ## Baseline
 
 Experiments require a single immutable anchor. The stable research baseline is the tag

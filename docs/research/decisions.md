@@ -2146,6 +2146,224 @@ cheapest. It dominates on expected information gain per unit effort.
 
 ---
 
+## DR-014 — Post-E4 interpretation & Research-Program Audit: the regime loss is (mostly) intrinsic — defund the model layer, pivot RP2 to the decision/monitoring layer
+
+- **Date:** 2026-06-28
+- **Role:** Interpretation & program-audit decision (Opus). No code, no experiment, no Sonnet
+  prompt, no experiment authorized. This entry (a) performs the post-E4 Bayesian update and branch
+  classification the evidence in DR-013 §8 was awaiting, and (b) records the conclusion of a
+  full Research-Program Audit (DR-001 → DR-013): the diagnostic gate has fired, it points
+  predominantly to **intrinsic prevalence-hardness**, and the program's highest-value remaining
+  work is **delivery (monitoring + regime-conditional cost characterization), not another model
+  experiment.**
+
+### §1 — Branch classification (pre-registered DR-013 §5)
+
+E4's evidence is genuinely mixed, but it is **not symmetric** — the strongest, most
+prevalence-invariant and most volume-robust metric is decisive:
+
+- **AUC is flat across all five regimes** (high-prev minus low-prev = **−0.0008**; all bootstrap
+  CIs overlap). Global ranking quality does **not** degrade with regime. → primary **Branch B** signal.
+- **Branch A rejected:** the production hybrid policy recovers only **~30%** of oracle MCC in every
+  fold; combined with Fact A/B (DR-013 §1), the decision-layer-only fix is insufficient.
+- **Branch C survives only locally:** the concept-drift signal is confined to **fold 3** (599
+  positives) — and there AUC (0.5657) is actually *higher* than folds 0/1/4; only the *top-region
+  lift* CI [2.66, 5.47] separates from the high-prev folds, and the prevalence-matched gap (+3.8,
+  +5.0) is subject to E4 limitation #3 (the subsample retains the high-prev feature distribution, so
+  the "extra difficulty" may be period-idiosyncratic feature shift in chunks 65–82, not recurring
+  regime drift). **Fold 4** (latest, largest, the E2 anchor) shows only marginal, overlapping extra
+  difficulty (+1.1, +2.4).
+
+**Classification: B-dominant, C-local-only, A-rejected.** Honest posteriors over the
+pre-registered branches: **B ≈ 0.55, C ≈ 0.30 (local pocket, not program-justifying), A ≈ 0.10,
+unresolved ≈ 0.05.** The automated `C_tentative` flag from the script is driven entirely by the
+single fold-3 lift CI and is *not* corroborated by the global AUC, by fold 4, or by a generalizable
+mechanism — it is a characterization finding, not an intervention trigger.
+
+### §2 — Bayesian update (active hypotheses, post-E4)
+
+| Hypothesis | Prior (DR-013 §6) | E4 evidence | Posterior | Conf. | Why it moved |
+|---|---|---|---|---|---|
+| **H_intrinsic_hardness** — low-prevalence loss is irreducible, ranking stable | 0.50 | AUC flat across regimes; fold-4 prev-matched gap small/overlapping | **0.62** | Med-High | The crux prediction (prevalence-invariant ranking is stable) is confirmed on the strongest metric. |
+| **H_concept_drift** — ranking degrades in low-prev regimes | 0.45 | Only fold-3 top-region lift separates; AUC there is *not* worse; confounded per limit #3 | **0.30** | Low-Med | Demoted to a **local pocket**. Real but not generalizable on current evidence; not enough to fund model-layer work. |
+| **H_threshold_sufficient** — decision-layer alone recovers the loss | 0.15 | Hybrid recovers ~30% of oracle | **0.10** | High | Further falsified. |
+| **H_threshold_nontransfer** — static threshold not deployable | 0.92 | Reconfirmed (fixed-0.91 ≈ 0 MCC everywhere) | **0.92** | High | Settled. |
+| **H_prevalence_artifact** — apparent decay is substantially mechanical | 0.55 | Prev-matched control: most of the low-prev MCC drop is reproduced by subsampling high-prev positives | **0.60** | Med | Strengthened: the mechanical prevalence path is a major share of the MCC swing. |
+| **H_regime** — origin proxies a latent operating regime | 0.67 | **Newly contested** — see §3 limitation: prevalence swings may be a chunk-ordering artifact | **0.55** | Low-Med | *Lowered* — the audit surfaced that the regime frame rests on an unvalidated assumption. |
+| H_nonstat (regime-variance) / H_info (distribution) / H_cv_optimistic / H_feature_leak | 0.82 / 0.65 / 0.70 / 0.85 | Untouched by E4 | unchanged | — | — |
+| H_splitgain / RP1 (H_struct/H_repr/H_value_durable) | 0.90 / 0.25,0.15,0.15 | Untouched | unchanged | — | RP1 stays frozen. |
+
+### §3 — Audit finding: an unvalidated foundational assumption
+
+The Research-Program Audit surfaced one assumption that has survived since DR-011 without evidence
+and underpins the entire RP2 frame: **that the per-window prevalence swings (0.33%–0.94%) are a
+real manufacturing regime signal rather than an artifact of how chunks were cut/ordered by
+`start_time`.** Bosch's base rate is near-constant; if the swings are a construction artifact, the
+corr(prevalence, MCC) = 0.68 "regime distribution" reframe is partly spurious. This is the highest
+*information* (not delivery) item remaining (audit Phase 3, U2). It is cheap to check (data
+provenance / time-structure analysis, no modeling) and is the **only** remaining question with a
+non-trivial probability (~0.25) of changing program direction. It is recorded here as a candidate
+for independent review; **it is not authorized in this entry.**
+
+### §4 — Roadmap decision: PIVOT RP2 (audit Phase 4 = option D)
+
+- **Defund the model-layer sub-program.** **RP2-4 (temporally-robust encodings)** and **RP2-5
+  (windowed retraining)** are **not funded.** They are gated on Branch C; the surviving C signal is
+  a single low-prevalence pocket with few positives — exactly the regime where richer encodings and
+  retraining are least able to help. Funding the costliest experiments against a plausibly
+  irreducible, small-n pocket is negative-EV.
+- **RP2-2 (threshold/calibration policy) stays closed** as a *complete* fix (pre-falsified, DR-013
+  §1); a regime-conditional *cost-expectation* characterization is folded into the deliverables
+  below, not run as a recovery experiment.
+- **Re-center RP2 on its high-certainty deployability deliverables** (charter DR-012 §4a/c/d), which
+  are mostly engineering, not research:
+  - **(d) RP2-3 — label-free monitoring**, promoted to the lead remaining item: score-distribution /
+    input-drift as the early-warning proxy for "the regime (and your operating point) has moved,"
+    since prevalence is unobservable live without labels.
+  - **(a/c) Regime-conditional cost/decision expectations**: report deployable performance as the
+    measured regime distribution (MCC 0.06–0.18, AUC ~0.55 flat, lift) with honest per-regime cost
+    expectations under the existing `CostConfig` — *characterization*, not intervention.
+- **Optional, held for independent review:** the §3 U2 validity check. If a research dollar must be
+  spent, it is the only item with positive expected information gain; otherwise the delivery items
+  dominate on total EV.
+- **RP1 remains frozen** (DR-010 §1). E4 gives no trigger to reopen it.
+
+This is a **pivot, not a freeze or a close**: RP2's governing question ("a robust deployable
+*decision* under regime shift") is still valuable and **not yet delivered** — but E4 has answered
+*how*: robustness must come from the **decision/monitoring layer and honest regime-conditional
+expectations**, because the **model cannot be made better for the hard (low-prevalence) regimes.**
+
+### §5 — Belief-state table (post-E4, RP2 pivoted)
+
+| Hypothesis | Status | Confidence |
+|---|---|---|
+| H_threshold_nontransfer: static threshold not deployable | = Settled | 0.92 |
+| H_splitgain inadmissible | = Settled | 0.90 |
+| H_feature_leak: E2 optimistic, second-order | = | 0.85 |
+| H_nonstat: non-stationarity as regime-variance | = | 0.82 |
+| H_intrinsic_hardness: low-prev loss irreducible, ranking stable | ↑ **Dominant** | 0.62 |
+| H_prevalence_artifact: MCC swing substantially mechanical | ↑ | 0.60 |
+| H_regime: origin proxies a latent operating regime | ↓ contested (audit §3) | 0.55 |
+| H_cv_optimistic | = | 0.70 |
+| H_info: deployable perf is a distribution (mean ≈ 0.12) | = | 0.65 |
+| H_concept_drift: ranking degrades in low-prev regimes | ↓ local pocket only | 0.30 |
+| H_threshold_sufficient / H_calibration_prevalence | ↓ falsified | 0.10 / 0.20 |
+| H_struct / H_repr / H_value_durable (RP1 frozen) | = Untouched | 0.25 / 0.15 / 0.15 |
+
+### §6 — Decision, confidence, next action
+
+- **Decision:** Classify E4 as **B-dominant / C-local / A-rejected**. Adopt the §2 update. **Pivot
+  RP2** (§4): defund RP2-4/-5, re-center on RP2-3 (label-free monitoring) + regime-conditional cost
+  characterization. Record the §3 foundational validity check (U2) as the sole positive-EIG research
+  candidate, held for independent review and **not authorized here.** RP1 stays frozen.
+- **Confidence:** **High** that the model layer should not be funded (AUC stability + poor EV against
+  a small-n pocket). **Medium** on the B-vs-C split magnitude (fold-3 pocket genuinely real but not
+  generalizable on current evidence). **Medium** that the prevalence regimes are real at all (§3).
+- **Next Action:** Return control for independent review of this audit and pivot before any new
+  experiment is authorized. No experiment is designed or authorized in this entry.
+
+---
+
+## DR-015 — U2 evaluated and closed: E5 is not justified; RP2 research phase complete
+
+- **Date:** 2026-06-28
+- **Role:** Evaluation & closure (Sonnet, per instruction). No code, no implementation.
+  This entry evaluates DR-014's U2 candidate ("are the observed regimes genuine or a
+  `start_time`-ordering artifact?"), argues against registering it as a new experiment, and
+  formally closes RP2's *research* phase. It is a decision record, not a pre-registration.
+
+### §1 — Critical evaluation: the case against E5
+
+DR-014 §3 estimated U2 had P(changes direction) ≈ 0.25 and called it the "only remaining
+question with non-trivial probability of changing program direction." That estimate does not
+survive a close re-read of E4's own data.
+
+**The fold-3 / fold-4 contrast is the key.** Folds 3 and 4 are *adjacent temporal windows*
+with *similar low prevalence* (0.333% and 0.394%) but radically different extra-difficulty
+profiles in E4's prevalence-matched control:
+
+| Window | Chunks | Prev | Prev-matched lift gap (f1→) | Prev-matched lift gap (f2→) |
+|--------|--------|------|---------------------------|---------------------------|
+| Fold 3 | 65–82  | 0.333% | **+3.836** (gap large) | **+4.966** (gap large) |
+| Fold 4 | 83–118 | 0.394% | +1.108 (within noise) | +2.365 (overlapping) |
+
+If the fold-3 difficulty were driven by a **persistent, stable operating regime** (the scenario
+that makes U2 most valuable and RP2-3 anticipatory monitoring possible), fold 4 — beginning
+immediately after fold 3 with similar prevalence — would show comparable extra difficulty. It
+does not. Two consecutive low-prevalence windows; radically different difficulty; **the hardest
+pocket evaporated one window later.** This is the fingerprint of a **transient local event
+in chunks 65–82**, not a predictable, persistent manufacturing regime.
+
+This observation, already inside E4's data, pre-empts U2's decision-relevant sub-question
+before any new measurement is taken. Concretely, the three downstream decisions U2 was
+intended to affect:
+
+1. **Fund RP2-4/-5?** Already closed by AUC stability. U2 cannot reopen this.
+2. **Design RP2-3 as anticipatory (predict regime entry) vs. reactive (detect after the fact)?**
+   The fold-3/fold-4 contrast shows the hardest pocket did not persist. Reactive monitoring is
+   the correct design regardless of what chunk-level autocorrelation would show — you cannot
+   pre-empt a transient that disappears in the next window.
+3. **Frame the deliverable as "regime-distributed" vs "i.i.d. variable"?** The honest framing
+   given the evidence is "transiently variable — the distribution is measured, but individual
+   pockets are not reliably predictable." U2 would add precision to this characterization, not
+   change it.
+
+**The residual U2 uncertainty is also unresolvable.** "Are the regimes real manufacturing
+events?" requires external ground truth — which production run, which tooling change, which
+product variant, caused chunks 65–82 to be hard. The Bosch dataset's `start_time` is
+anonymized; we have no manufacturing metadata. A chunk-autocorrelation analysis can confirm
+that fold-3's low prevalence was sustained across chunks 65–82 (structural within that window)
+without explaining whether it reflects a genuine process event or dataset-construction. The
+question as stated is *partially unverifiable from this data*.
+
+**Revised P(changes direction) ≈ 0.05–0.08** (down from DR-014's 0.25): the anticipatory
+monitoring path is already ruled out by fold-3/fold-4; the deliverable framing is marginally
+affected; and the remaining uncertainty is unresolvable. At this EIG, U2 is below the bar for
+a pre-registered experiment.
+
+### §2 — What permanently closes RP2
+
+Research Program 2 is hereby declared **COMPLETE as a research program**. Its governing
+question — *"How do we make a robust deployable decision when the operating regime shifts?"*
+— is answered in the scientific sense:
+
+1. **The model cannot be improved for the hard regimes** (AUC flat across all 5 rolling-origin
+   windows, including the low-prevalence pocket; intrinsic prevalence-hardness dominant at 0.62).
+2. **The performance distribution is measured** (rolling-origin MCC: 0.06–0.18, mean ≈ 0.12,
+   AUC ≈ 0.55; not a single number, not a fixed ceiling).
+3. **The static threshold is not deployable** (optimal shifts 0.14–0.72; fixed-0.91 → ~0 MCC
+   everywhere; H_threshold_nontransfer settled at 0.92).
+4. **The hard-regime difficulty is substantially intrinsic** (prevalence-matched control) with a
+   transient local component (fold-3/fold-4 asymmetry), not a persistent trackable regime.
+
+RP2 closes as a research program when **RP2-3 is delivered**: a label-free score-distribution
+and input-drift monitor that alerts operators to regime entry without requiring label feedback,
+benchmarked against the measured performance distribution as the "expected operating envelope."
+That is an *engineering* deliverable, not a research gate.
+
+**Specific early-close clause (if needed before RP2-3 is built):** RP2 can also be closed as
+complete at any earlier point if the case-study documentation is updated to reflect the
+measured regime distribution, the H_threshold_nontransfer finding, and the recommendation that
+the production decision policy be periodically re-calibrated against recent deployment data.
+The research questions are answered; the documentation of the answers is the remaining work.
+
+**RP1 remains frozen** per DR-010 §1. No trigger has appeared.
+
+### §3 — Decision
+
+- **E5 / U2: NOT PRE-REGISTERED.** The within-E4 fold-3/fold-4 contrast pre-empts the
+  question; P(changes direction) revised to ≈ 0.05–0.08; the residual is unresolvable from
+  available data.
+- **RP2 research phase: COMPLETE.** The governing question is answered. The remaining work
+  (RP2-3 label-free monitoring + case-study documentation update) is engineering, not research.
+- **Confidence:** **High** that U2 would not change the program's direction or its delivery
+  roadmap. **High** that reactive monitoring is the correct RP2-3 design regardless of U2's
+  outcome.
+- **Next action:** Return control. No experiment authorized. RP2-3 (engineering delivery) can
+  proceed without a new research gate.
+
+---
+
 ## Pending experiment ledger
 
 | ID | Role | Pre-registered question | Status |
@@ -2159,9 +2377,12 @@ cheapest. It dominates on expected information gain per unit effort.
 | **— RP1 boundary —** | **Representation Research Program** | Is the model representation-limited? (DR-001) | **FROZEN (DR-010).** Answered: no durable deployable signal in the sensor block; model is non-stationarity-limited. Reopens only via the DR-010 §1 clause. |
 | RP2-1 ≡ **E3** | Research Program 2, item #1 | Honest temporal re-baseline of `dataset_h` (rolling-origin CV + past-only label-feature recompute): is E2's ~24% OOT degradation systematic? | **DONE — REGIME-DEPENDENT (DR-011 evidence; DR-012 interpretation).** Mean OOT MCC 0.119; 3/5 folds degrade, 2/5 exceed in-CV; corr(pos-rate, MCC)=0.68. Anchor: E3-clean 0.104 vs E2-leaky 0.117. Reframed: deployable perf is a regime distribution, not temporal decay. |
 | **— RP2 charter revised (DR-012) —** | Governing question changed | From "temporal robustness of the model" → "**robust decision-making under changing operating regimes**" | Static threshold not deployable (0.14–0.72 swing); binding *layer* (decision vs model) unresolved → E4. |
-| **E4** ≡ RP2 diagnostic | Gate (diagnostic) | **(Re-aimed, DR-013.)** Of the regime loss that re-thresholding cannot fix (E3 Fact A), is it **intrinsic prevalence-hardness** (stable ranking, irreducible) or **concept drift** (ranking degrades)? Threshold-free AUC/lift + precision/recall@budget + a **prevalence-matched control** + bootstrap CIs on the existing rolling-origin folds. | **DONE — evidence in DR-013 §8.** AUC stable across regimes (degradation=−0.0008); Lift degrades in fold 3 (CI [2.66,5.47] outside high-prev CIs); prevalence-matched control shows extra difficulty in fold 3 (+3.8–5.0 lift gap beyond prevalence); hybrid policy recovers ~30% of oracle. Automated classification: **C_tentative**. Interpretation gated on Opus. |
-| RP2-2 | Research Program 2, item #2 | Regime-aware threshold/calibration policy under prevalence shift | **Backlog — GATED on E4; pre-falsified as a *complete* fix (DR-013 §1: oracle thresholds insufficient, threshold not prevalence-predictable).** |
-| RP2-3 | Research Program 2, item #3 | Drift monitoring (operationalize; **label-free** score/input-drift as regime-shift early warning) | **Backlog (DR-010 §4; reframed DR-012 §4d)** |
-| RP2-4 | Research Program 2, item #4 | Temporally-honest target encodings | **Backlog — GATED on E4 (model-layer branch only)** |
-| RP2-5 | Research Program 2, item #5 | Retraining-cadence policy | **Backlog (dependency-gated; model-layer branch only)** |
+| **E4** ≡ RP2 diagnostic | Gate (diagnostic) | **(Re-aimed, DR-013.)** Of the regime loss that re-thresholding cannot fix (E3 Fact A), is it **intrinsic prevalence-hardness** (stable ranking, irreducible) or **concept drift** (ranking degrades)? Threshold-free AUC/lift + precision/recall@budget + a **prevalence-matched control** + bootstrap CIs on the existing rolling-origin folds. | **DONE — evidence in DR-013 §8.** AUC stable across regimes (degradation=−0.0008); Lift degrades in fold 3 (CI [2.66,5.47] outside high-prev CIs); prevalence-matched control shows extra difficulty in fold 3 (+3.8–5.0 lift gap beyond prevalence); hybrid policy recovers ~30% of oracle. **INTERPRETED (DR-014): B-dominant / C-local / A-rejected.** |
+| **— RP2 PIVOTED (DR-014) —** | Program-audit decision | Model layer cannot help the hard regimes (AUC flat across regimes); robustness must come from the decision/monitoring layer | Defund RP2-4/-5; re-center on RP2-3 + regime-conditional cost characterization. Optional U2 validity check held for review. RP1 stays frozen. |
+| RP2-2 | Research Program 2, item #2 | Regime-aware threshold/calibration policy under prevalence shift | **CLOSED as a recovery experiment (DR-013 §1 + DR-014).** Pre-falsified as a complete fix; cost-expectation characterization folded into RP2-3 deliverables. |
+| RP2-3 | Research Program 2, item #3 | Drift monitoring (operationalize; **label-free** score/input-drift as regime-shift early warning) | **PROMOTED to lead remaining item (DR-014).** Highest-delivery-value; mostly engineering. |
+| RP2-4 | Research Program 2, item #4 | Temporally-honest target encodings | **NOT FUNDED (DR-014).** Gated on Branch C; surviving C signal is a small-n low-prevalence pocket — negative-EV. |
+| RP2-5 | Research Program 2, item #5 | Retraining-cadence policy | **NOT FUNDED (DR-014).** Gated on Branch C; same rationale as RP2-4. |
+| U2 (audit) | Foundational validity check | Are the per-window prevalence swings a real regime signal or a chunk-ordering artifact? | **CLOSED WITHOUT RUNNING (DR-015).** Fold-3/fold-4 within-E4 contrast pre-empts the question; P(changes direction) revised to ≈0.05–0.08; residual unresolvable from anonymized data. E5 not authorized. |
+| **— RP2 RESEARCH PHASE COMPLETE (DR-015) —** | Closure | Research questions answered; remaining work is engineering | RP2-3 (label-free monitoring) + case-study documentation update. No further research gates. RP1 frozen. |
 | K-track | Separate program | Leaderboard optimization | **Permanent architecture ratified (DR-008)**; scaffolded + firewalled; no experiment run |
