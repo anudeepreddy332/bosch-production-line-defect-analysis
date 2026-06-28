@@ -306,7 +306,7 @@ future run on the same model and features will reproduce the same output.
 
 **Complete.** `outputs/submission_K1.csv` is the authoritative K1 artifact (gitignored, not
 committed; reproducible on demand from committed model + pre-registered command). Tag
-`K1-result` placed at commit `9c27d48` on `kaggle/K1-baseline-reproduction`. The Track 2
+`K1-result` placed at the tip of `kaggle/K1-baseline-reproduction`. The Track 2
 baseline is established: public LB target 0.14389 / private LB 0.16160 (from documented prior
 run; K1 confirms the artifact that produced those scores is reproducible). Every future `K<N>`
 compares against this baseline. Design K2 in `KDR-003`.
