@@ -208,11 +208,116 @@ work is unaffected: `main` lineage stays leakage-free, and nothing in this log m
 
 ---
 
+### K1 Evidence (run 2026-06-28 on `kaggle/K1-baseline-reproduction`)
+
+**Pre-run artifact fingerprints:**
+
+| Artifact | Fingerprint |
+|---|---|
+| `models/dataset_h_model.pkl` | md5 `ef924414462ed554c7bd14b5b95cc1e7` |
+| `models/dataset_h_model.pkl` payload `data_fingerprint` | `a5bb652f2b20aca6` |
+| `models/dataset_h_model.pkl` payload `threshold` | `0.91` |
+| `models/dataset_h_model.pkl` payload `n_folds` | `5` |
+| `models/dataset_h_model.pkl` payload `oof_mcc` | `0.15337` |
+| `data/features/test_dataset_h.parquet` | pandas-hash md5 `691357340332fc446eff09a3085145a4` |
+| `data/features/test_dataset_h.parquet` shape | `(1183748, 17)` |
+| `data/features/test_dataset_h.parquet` has `Response` | `False` (label-free confirmed) |
+
+**Commands executed (in order):**
+
+```bash
+# Verify artifacts present
+ls models/dataset_h_model.pkl data/features/test_dataset_h.parquet
+md5sum models/dataset_h_model.pkl  # -> ef924414462ed554c7bd14b5b95cc1e7
+
+# K1 run (pre-registered command)
+PYTHONPATH=. python scripts/generate_submission.py \
+  --model-path models/dataset_h_model.pkl \
+  --test-features data/features/test_dataset_h.parquet \
+  --output outputs/submission_K1.csv
+
+# Determinism check (second run, independent)
+PYTHONPATH=. python scripts/generate_submission.py \
+  --model-path models/dataset_h_model.pkl \
+  --test-features data/features/test_dataset_h.parquet \
+  --output outputs/submission_K1_run2.csv
+diff outputs/submission_K1.csv outputs/submission_K1_run2.csv  # -> BYTE-IDENTICAL
+rm outputs/submission_K1_run2.csv  # cleanup
+```
+
+**Script output (both runs identical):**
+
+```
+model_name='dataset_h'
+threshold_used=0.91
+output_path=outputs/submission_K1.csv
+row_count=1183748
+positive_prediction_count=2993
+```
+
+**Output validation (`outputs/submission_K1.csv`):**
+
+| Check | Pre-registered criterion | Result | Pass? |
+|---|---|---|---|
+| Row count | 1,183,748 | 1,183,748 | ✅ |
+| Positive count | 2,993 | 2,993 | ✅ |
+| Id set matches `sample_submission.parquet` | exact set equality | True (1,183,748 unique, no extras/missing) | ✅ |
+| Id range | 1 – 2,367,494 | 1 – 2,367,494 | ✅ |
+| Id monotone sorted | yes | yes | ✅ |
+| NaN count | 0 | 0 | ✅ |
+| Columns | `[Id, Response]` | `[Id, Response]` | ✅ |
+| Response values | binary `{0, 1}` | `{0, 1}` (int64) | ✅ |
+| Threshold applied | 0.91 | 0.91 (from payload; not overridden) | ✅ |
+| No supervised metric computed | grep returns empty | verified (label-free path) | ✅ |
+
+**Output file hashes:**
+
+| Hash | Value |
+|---|---|
+| md5 | `e83b769be914976972a209c5ca278602` |
+| sha256 | `44bebfa864f24c4cb5029f42eb384a507e3771b7782a08d8bb0b12e794df29db` |
+| size | 11,281,556 bytes |
+
+**Determinism:** Two independent runs produce byte-identical output (md5
+`e83b769be914976972a209c5ca278602` on both). The pipeline is deterministic at
+inference time (no training randomness; LightGBM predict is deterministic given
+fixed model + input).
+
+**Comparison to documented prior run (`docs/dataset_h_submission_run.md`):**
+The prior run produced `outputs/dataset_h_submission.csv` (gitignored, no longer
+on disk; no hash was recorded at run time). All documented numerical results
+match exactly: 1,183,748 rows, 2,993 positives, threshold 0.91, Id-set verified
+against `sample_submission.parquet`. Byte-identity with the original file cannot
+be proven (hash was not recorded then), but numerical identity on every
+pre-registered criterion is confirmed. The pipeline is deterministic, so any
+future run on the same model and features will reproduce the same output.
+
+**Contamination check:**
+- `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` → empty. Firewall intact.
+- K1 touched only `docs/research/kaggle_decisions.md` and `docs/ml_system_tracks.md` (docs
+  only). No `src/`, `scripts/`, `apps/` files changed. No `decisions.md` entry added.
+
+### K1 Outcome
+
+**PASS.** All pre-registered success criteria met. The frozen `dataset_h` model at threshold
+0.91 reproduces the documented Track 2 baseline exactly and deterministically.
+
+### K1 Decision
+
+**Complete.** `outputs/submission_K1.csv` is the authoritative K1 artifact (gitignored, not
+committed; reproducible on demand from committed model + pre-registered command). Tag
+`K1-result` placed at commit `e9ef6dc` on `kaggle/K1-baseline-reproduction`. The Track 2
+baseline is established: public LB target 0.14389 / private LB 0.16160 (from documented prior
+run; K1 confirms the artifact that produced those scores is reproducible). Every future `K<N>`
+compares against this baseline. Design K2 in `KDR-003`.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
 |---|---|---|
 | KDR-001 | Open Track 2; fix objective, success criteria, contamination rules, `K`-numbering | **Decided — track open (2026-06-28)** |
 | KDR-002 | Pre-register K1: baseline reproduction from frozen production candidate | **Decided — K1 authorized (2026-06-28)** |
-| K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **In progress** — branch `kaggle/K1-baseline-reproduction` @ `b058e58` |
+| K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **Complete** — PASS (2026-06-28); tag `K1-result`; md5 `e83b769be914976972a209c5ca278602` |
 | K2 | (to be designed) | Pending — pre-register in `KDR-003` after K1 establishes baseline |
