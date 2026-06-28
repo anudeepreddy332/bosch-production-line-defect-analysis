@@ -103,8 +103,84 @@ DR-NNN ──designs──▶ E1, E2, E1p           (why / what / decision rule)
 ③ PR filled with the template; ④ decisions.md DR entry updated; ⑤ merge-or-abandon decision
 recorded. Missing any one → not done.
 
+**Continuous research programs (multi-experiment).** When several experiments are executed as one
+continuous program on a single research branch (e.g. RP2 = E2–E4 on
+`research/rp2-temporal-robustness`), the program closes with **one program-level PR + per-experiment
+`E*-result` tags + the decisions.md record landed on `main`**. Per-experiment PRs (checklist item ③)
+are **not** required retroactively for such a program — the program PR plus the result tags and DR
+entries preserve full traceability without rewriting history. Items ①②④⑤ still apply per experiment.
+
 ## Baseline
 
 Experiments require a single immutable anchor. The stable research baseline is the tag
-**`baseline-v1`**, to be placed on `main` after the production system (PR #1) is merged. All
-experiment branches are cut from `baseline-v1`. See DR-003 for the adoption decision.
+**`baseline-v1`**, placed on `main` at the production-system merge commit (PR #1 merged 2026-06-27).
+All experiment branches are cut from `baseline-v1`. See DR-003 for the adoption decision.
+
+## Two tracks, one repo (added DR-005)
+
+The repo runs two non-overlapping programs. Disjoint ID prefixes are both the join key and the
+contamination firewall.
+
+| | Production (primary) | Kaggle (secondary) |
+|---|---|---|
+| Canonical log | `decisions.md` | `kaggle_decisions.md` |
+| Decision IDs | `DR-NNN` | `KDR-NNN` |
+| Experiment IDs | `E<N>` (diagnostics `E<N>p`) | `K<N>` |
+| Branch | `exp/E<N>-slug` | `kaggle/K<N>-slug` |
+| Result tag | `E<N>-result` | `K<N>-result` |
+| Cut from | `baseline-v1` | `kaggle-main` (seeded from `baseline-v1`, forward-merged from `main`) |
+| Long-lived line | `main` | `kaggle-main` (lazy; created at `K1`) |
+| Merges to | `main` (if kept) | `kaggle-main` only — **never `main`** |
+| Cross-merge | `main` → `kaggle-main` **allowed** | `kaggle-main` → `main` **forbidden** (only the §re-derivation gateway crosses) |
+| Quarantined code | n/a | `src/kaggle/`, `scripts/kaggle/` (no outside module may import these) |
+
+> **Revision (DR-008):** Kaggle branches now cut from `kaggle-main` (not `baseline-v1` as DR-005
+> provisionally stated), so the Kaggle track inherits Production advances by forward-merging `main`.
+> The reverse merge is forbidden; Production-bound Kaggle ideas use the re-derivation gateway below.
+
+**Hard rules.** `main` is production lineage and stays leakage-free forever — no `kaggle/*` branch
+ever merges into it. No leaderboard score or leakage-laden metric appears in `decisions.md` or
+gates any `E`/`DR`. Shared infrastructure (data prep, CV harness, `src/training/`, clean feature
+contracts) is imported by both tracks; competition-only/leaky feature logic lives only in
+`src/kaggle/`. `git log --grep "E"` returns only production work; `--grep "K"` only Kaggle. See
+DR-005 §4 and DR-007 §4 for the full contract.
+
+### Contamination checklist (run before any merge to `main`)
+
+A change may merge to `main` only if **all** are true. Any "no" → it is Kaggle work, route it to
+`kaggle/K*` / `kaggle-main` instead.
+
+1. **Feature provenance:** every feature is computable from a single part's own raw record at
+   scoring time — no record-adjacency, timing-to-neighbor, test-order, or duplicate/concat features
+   (the `LEAKY_FEATURE_PREFIXES` family). 
+2. **Metric provenance:** every reported MCC/threshold was computed on labeled OOF/CV data with the
+   chunk-aware group-safe harness — never on unlabeled production data, never with a leaky feature.
+3. **No import of `src/kaggle/`** anywhere in the changed code outside `src/kaggle/` itself.
+4. **No leaderboard number** appears in `decisions.md` or in any `DR`/`E` rationale.
+5. **Log routing:** the change's scientific record lands in `decisions.md` (`DR`/`E`), not
+   `kaggle_decisions.md`.
+
+If a single experiment produces both an honest production result and a leaky leaderboard variant,
+they are **two experiments** (`E*` and `K*`) on **two branches**, recorded in **two logs** — never
+one commit.
+
+### The evidence valve and re-derivation gateway (DR-008)
+
+Production's protocol is strictly stronger than Kaggle's, so value flows asymmetrically:
+
+| What crosses | Prod → Kaggle | Kaggle → Prod |
+|---|---|---|
+| Ideas / hypotheses | free | free, but only as a **fresh pre-registered `DR`/`E`** (zero borrowed priors) |
+| Code (import) | free | forbidden (`src/kaggle/` is import-inward-only) |
+| Evidence / metrics | free | **forbidden** (never in `decisions.md`, never gates a `DR`/`E`) |
+| Features | free | only via the **re-derivation gateway** |
+
+**Re-derivation gateway** (the *only* inbound Kaggle→Production path): open a new `E<M>` with fresh
+`DR` pre-registration → re-implement the mechanism leakage-free (if impossible, it stays Kaggle-only
+forever) → re-validate on the chunk-aware honest-OOF harness → **discard the Kaggle number**, keep
+only the reproduced Production MCC → merge after the contamination checklist. A Kaggle result that
+cannot survive this gateway is, by definition, not a Production result.
+
+**Code valve enforcement:** before any merge to `main`,
+`grep -r "import.*kaggle" src/ scripts/ --include=*.py` (excluding `src/kaggle/`) must be empty.
+Wire into CI when `K1` opens.

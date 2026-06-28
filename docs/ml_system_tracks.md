@@ -1,5 +1,17 @@
 # ML System Tracks: Three-Track Architecture
 
+## Status
+
+| Track | Description | Progress | State |
+|-------|-------------|----------|-------|
+| Track 1 | Offline Research | 95% | Pending freeze |
+| Track 2 | Kaggle | 10% | — |
+| Track 3 | Production | 70% | — |
+
+**Current Active Track:** Phase 0 — Freeze Track 1
+
+---
+
 This document is the canonical statement of the project's scope split. It **clarifies** the
 existing two-flow framing in `system_design.md` and the two-track framing in `bosch_agent.md`
 into three explicit tracks, and resolves an ambiguity neither of those docs addressed: the
@@ -170,6 +182,83 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 | Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. S3 upload of Track 3's partitioned output is wired (append-only, upload-then-advance), and Dashboard View A (next row) now renders it. Still open: drift in the dashboard |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Exists for predictions/risk-scores** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page (label-free, verified no `Response`/no supervised metrics). Still open: drift/data-quality rendering (Evidently output exists but isn't wired into this view) |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
+
+---
+
+## Definition of Done (per track)
+
+Each track transitions to "done" on **objective, checkable criteria**, not judgment. A track is
+Done only when every box below is true. The roadmap (next section) gates transitions on these.
+
+### Track 1 — Offline Training & Evaluation — Definition of Done
+
+- [ ] Approved, frozen model artifact (`dataset_h` is the v1 candidate) + its feature schema +
+      selected decision threshold/policy, persisted under version control.
+- [ ] Honest metrics reported on labeled OOF/CV only (chunk-aware group-safe harness); no supervised
+      metric on unlabeled data anywhere in this track.
+- [ ] The research program (RP1 + RP2) record is complete and **landed on `main`**: `decisions.md`
+      DR-001 → DR-015, plus the E1–E4 scripts and `outputs/e*` evidence.
+- [ ] Retroactive result tags placed: `E1-result` (exists), `E2-result`, `E3-result`, `E4-result`,
+      and a program/freeze tag (e.g. `track1-frozen`).
+- [ ] **Closure convention for a continuous research program:** RP2 (E2–E4) was executed as one
+      continuous program on a single research branch; it closes via **one program-level PR +
+      per-experiment `E*-result` tags + the decisions log**. Retroactive **per-experiment PRs are NOT
+      required** — this preserves historical integrity. (See `docs/research/git_workflow.md`.)
+- [ ] RP1 frozen (DR-010); RP2 research phase closed (DR-015); no open research gate.
+
+*Status: science complete; pending record-landing on `main` + result tags (roadmap Phase 0).*
+
+### Track 2 — Kaggle Submission — Definition of Done
+
+- [ ] `kaggle-main` branch + `src/kaggle/` / `scripts/kaggle/` created; `KDR-001` opened in
+      `kaggle_decisions.md` (lazy scaffold per DR-008).
+- [ ] Test-side feature pipeline producing engineered test tables for every model in the path
+      (baseline, g, h, meta). `dataset_h` test features exist; baseline/g/meta pending.
+- [ ] Persisted OOF-safe rate-lookup tables so g/h/meta features compute on test rows without leakage.
+- [ ] `models/*.pkl` regenerated in the Phase-2 payload format `generate_submission.py` requires
+      (current pickles are bare `LGBMClassifier`).
+- [ ] One real end-to-end `submission.csv` produced — exactly `Id,Response`, row count matching
+      `sample_submission`.
+- [ ] Firewall intact: no `src/kaggle/` import outside it; no leaderboard number in `decisions.md`
+      or any `DR`/`E`.
+
+*Status: not started end-to-end (scaffolding + `dataset_h` test features only).*
+
+### Track 3 — Production Inference Simulation — Definition of Done
+
+- [ ] Frozen approved model scores unlabeled simulated batches; output carries predictions/risk
+      scores + batch/cycle state + timestamps, with **zero** MCC/precision/recall/accuracy/
+      TP/FP/TN/FN/confusion matrix (grep-verified).
+- [ ] Append-only S3 partitioned output (upload-then-advance, never overwrite an existing key).
+- [ ] **Label-free drift:** `run_drift_monitoring.py` runs on Track 3's label-free output (not on
+      labeled `meta_dataset.parquet`), and its Evidently summary is rendered in Dashboard View A.
+- [ ] Dashboard split clean: View A (Production Monitoring, label-free) and View B (Offline
+      Evaluation, labeled OOF) separated and correctly labeled; no supervised metric on View A.
+- [ ] Case study reports deployable performance as the **measured regime distribution** with the
+      static-threshold-non-transfer caveat (the RP2 handoff), not a single in-CV number.
+
+*Status: core label-free path exists (`run_production_inference.py`, View A); pending label-free
+drift wiring + View-B relabel + case-study handoff.*
+
+---
+
+## Roadmap & transition gates
+
+Transitions are gated on the Definition of Done above, not on judgment.
+
+1. **Phase 0 — Freeze Track 1.** Commit DR-014/DR-015 → land the research record on `main` → place
+   retroactive `E*-result` tags + a program/freeze tag. **Gate to Phase 1:** Track 1 DoD fully checked.
+2. **Phase 1 — Production v1 (Track 3).** RP2 case-study handoff, label-free drift wiring, View-A
+   Evidently rendering, freeze v1 model + policy. **Gate to the cleanup milestone:** Track 3 DoD
+   fully checked.
+3. **Milestone — Repository cleanup / documentation polish.** Clear documentation and architectural
+   debt **before** branching Kaggle, so it does not leak into the Kaggle track: View-B relabel +
+   `live_df`/`load_scoring_data` rename, `architecture.md` Track 3 node, README / CASE_STUDY
+   overstatement fixes, CLAUDE.md "already enforce" revisit, `kaggle_decisions.md` branch-anchor
+   line, the track-terminology glossary, and stray `_blend` artifact provenance/cleanup. **Gate to
+   Phase 2:** no known doc/architecture inconsistency outstanding on `main`.
+4. **Phase 2 — Track 2 (Kaggle).** Open `K1` and execute the Track 2 DoD on `kaggle-main` only; the
+   firewall to `main` stays absolute.
 
 ---
 

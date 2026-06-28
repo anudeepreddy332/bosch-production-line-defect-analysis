@@ -1,0 +1,218 @@
+{
+  "experiment": "E3 (RP2-1)",
+  "description": "Honest temporal re-baseline: rolling-origin CV with past-only label-feature recompute",
+  "reproduce": "PYTHONPATH=. python scripts/train_e3_rolling_origin.py",
+  "references": {
+    "pre_registration": "DR-011",
+    "program": "RP2",
+    "e2_results": "DR-009"
+  },
+  "methodology": {
+    "split_type": "expanding-window forward-chaining (rolling-origin)",
+    "n_folds": 5,
+    "fold_boundaries": [
+      {
+        "fold": 0,
+        "train_max_chunk": 17,
+        "test_min": 18,
+        "test_max": 33
+      },
+      {
+        "fold": 1,
+        "train_max_chunk": 33,
+        "test_min": 34,
+        "test_max": 49
+      },
+      {
+        "fold": 2,
+        "train_max_chunk": 49,
+        "test_min": 50,
+        "test_max": 64
+      },
+      {
+        "fold": 3,
+        "train_max_chunk": 64,
+        "test_min": 65,
+        "test_max": 82
+      },
+      {
+        "fold": 4,
+        "train_max_chunk": 82,
+        "test_min": 83,
+        "test_max": 118
+      }
+    ],
+    "e2_anchor_fold": 4,
+    "hyperparameters": {
+      "n_estimators": 700,
+      "learning_rate": 0.03,
+      "num_leaves": 63,
+      "class_weight": "balanced",
+      "early_stopping": false,
+      "random_state": "42 + fold_idx"
+    }
+  },
+  "reference_numbers": {
+    "incv_mcc": 0.15337,
+    "incv_threshold": 0.91,
+    "e2_leaky_mcc_at_anchor_boundary": 0.11679
+  },
+  "feature_audit": {
+    "raw_features": {
+      "features": [
+        "start_time",
+        "duration",
+        "feature_mean",
+        "records_last_1hr",
+        "records_last_24hr",
+        "density_ratio",
+        "chunk_id",
+        "chunk_size"
+      ],
+      "label_dependent": false,
+      "training_window_dependent": false,
+      "recomputed_per_fold": false,
+      "justification": "start_time, duration, feature_mean: from raw sensor/date CSVs, no Response. records_last_1hr, records_last_24hr, density_ratio: retrospective time-window counts, look backward in time only, no Response. chunk_id, chunk_size: globally-assigned temporal rank (sorted start_time, 10k-row blocks), no Response, no training-window dependency."
+    },
+    "recomputed_features": {
+      "label_derived": [
+        "transition_fail_rate_mean",
+        "transition_fail_rate_max",
+        "transition_fail_rate_std",
+        "station_risk_mean"
+      ],
+      "training_window_derived": [
+        "path_count",
+        "pair_cooccur_mean",
+        "pair_cooccur_max",
+        "pair_cooccur_std"
+      ],
+      "recomputed_per_fold": true,
+      "justification": "Label-derived: computed as failure rate (Response mean) per station / transition / path, using only training-window rows. Training-window-derived: path_count (how many training rows share this path signature), pair_cooccur_{mean,max,std} (co-occurrence counts of station pairs in training). No Response used, but future rows' membership in the dataset would contaminate these if computed globally \u2014 must be recomputed from training-window rows only."
+    },
+    "leak_free_verification": "Verified: _recompute_routing_features() uses ONLY df_train rows (chunk_id <= train_max_chunk). Test rows' features map from training-window statistics with global_mean / count=1 fallbacks for unseen signatures. No test-row Response or test-chunk membership is used in any statistic."
+  },
+  "fold_results": [
+    {
+      "fold_idx": 0,
+      "train_chunks": "0-17",
+      "test_chunks": "18-33",
+      "train_rows": 180000,
+      "test_rows": 160000,
+      "train_pos": 944,
+      "test_pos": 1279,
+      "train_pos_rate": 0.005244,
+      "test_pos_rate": 0.007994,
+      "oot_mcc_best_threshold": 0.079719,
+      "oot_best_threshold": 0.14,
+      "oot_mcc_fixed_threshold": -0.000224,
+      "fixed_threshold_used": 0.91,
+      "incv_threshold_gap": 0.079944,
+      "elapsed_s": 7.2,
+      "mem_peak_gb": 1.108,
+      "data_fingerprint": "ea50e210c2ef21d4",
+      "is_e2_anchor": false
+    },
+    {
+      "fold_idx": 1,
+      "train_chunks": "0-33",
+      "test_chunks": "34-49",
+      "train_rows": 340000,
+      "test_rows": 160000,
+      "train_pos": 2223,
+      "test_pos": 1254,
+      "train_pos_rate": 0.006538,
+      "test_pos_rate": 0.007838,
+      "oot_mcc_best_threshold": 0.181642,
+      "oot_best_threshold": 0.4,
+      "oot_mcc_fixed_threshold": 0.032742,
+      "fixed_threshold_used": 0.91,
+      "incv_threshold_gap": 0.148899,
+      "elapsed_s": 7.8,
+      "mem_peak_gb": 1.184,
+      "data_fingerprint": "17610cfad420e9dc",
+      "is_e2_anchor": false
+    },
+    {
+      "fold_idx": 2,
+      "train_chunks": "0-49",
+      "test_chunks": "50-64",
+      "train_rows": 500000,
+      "test_rows": 150000,
+      "train_pos": 3477,
+      "test_pos": 1411,
+      "train_pos_rate": 0.006954,
+      "test_pos_rate": 0.009407,
+      "oot_mcc_best_threshold": 0.170451,
+      "oot_best_threshold": 0.72,
+      "oot_mcc_fixed_threshold": 0.047372,
+      "fixed_threshold_used": 0.91,
+      "incv_threshold_gap": 0.123079,
+      "elapsed_s": 8.6,
+      "mem_peak_gb": 0.906,
+      "data_fingerprint": "ed6fb1aee10f79c2",
+      "is_e2_anchor": false
+    },
+    {
+      "fold_idx": 3,
+      "train_chunks": "0-64",
+      "test_chunks": "65-82",
+      "train_rows": 650000,
+      "test_rows": 180000,
+      "train_pos": 4888,
+      "test_pos": 599,
+      "train_pos_rate": 0.00752,
+      "test_pos_rate": 0.003328,
+      "oot_mcc_best_threshold": 0.061104,
+      "oot_best_threshold": 0.4,
+      "oot_mcc_fixed_threshold": 0.055129,
+      "fixed_threshold_used": 0.91,
+      "incv_threshold_gap": 0.005975,
+      "elapsed_s": 9.8,
+      "mem_peak_gb": 1.09,
+      "data_fingerprint": "39e3efff9752bd4c",
+      "is_e2_anchor": false
+    },
+    {
+      "fold_idx": 4,
+      "train_chunks": "0-82",
+      "test_chunks": "83-118",
+      "train_rows": 830000,
+      "test_rows": 353747,
+      "train_pos": 5487,
+      "test_pos": 1392,
+      "train_pos_rate": 0.006611,
+      "test_pos_rate": 0.003935,
+      "oot_mcc_best_threshold": 0.104268,
+      "oot_best_threshold": 0.62,
+      "oot_mcc_fixed_threshold": 0.041643,
+      "fixed_threshold_used": 0.91,
+      "incv_threshold_gap": 0.062626,
+      "elapsed_s": 12.6,
+      "mem_peak_gb": 1.302,
+      "data_fingerprint": "b71f070a5769e1d6",
+      "is_e2_anchor": true
+    }
+  ],
+  "cross_origin_summary": {
+    "n_folds": 5,
+    "mean_mcc": 0.119437,
+    "std_mcc": 0.054042,
+    "ci_95_lower": 0.052345,
+    "ci_95_upper": 0.186528,
+    "min_mcc": 0.061104,
+    "max_mcc": 0.181642,
+    "degradation_vs_incv_absolute": -0.033933,
+    "degradation_vs_incv_pct": -22.13,
+    "corr_test_posrate_vs_mcc": 0.6792
+  },
+  "attribution_anchor": {
+    "incv_mcc": 0.15337,
+    "e2_leaky_mcc": 0.11679,
+    "e3_clean_mcc": 0.104268,
+    "split_effect": -0.03658,
+    "feature_recomputation_effect": -0.012522,
+    "total_honest_gap_vs_incv": -0.049102,
+    "interpretation_note": "split_effect = E2_leaky - in_CV (forward-chain split with leaky OOF features). feature_recomputation_effect = E3_clean - E2_leaky (same boundary; effect of removing the OOF-leak from test-row routing features). total_honest_gap_vs_incv = E3_clean - in_CV (the full deployable gap)."
+  }
+}
