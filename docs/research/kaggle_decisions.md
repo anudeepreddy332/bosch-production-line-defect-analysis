@@ -137,9 +137,82 @@ work is unaffected: `main` lineage stays leakage-free, and nothing in this log m
 
 ---
 
+## KDR-002 — Pre-register K1: baseline reproduction from frozen production candidate
+
+- **Date:** 2026-06-28
+- **Decision type:** Experiment pre-registration. **Authorizes K1 only** — no further experiments
+  are authorized by this entry.
+- **Trigger:** Track 2 is open (KDR-001). `kaggle-main` is current at `b058e58` (carries KDR-001
+  governance). The first step before any leaderboard probe is establishing a reproducible baseline
+  so that every future `K<N>` has a concrete comparator. The `dataset_h` production submission is
+  already verified end-to-end (`docs/dataset_h_submission_run.md`): 1,183,748 rows, threshold 0.91,
+  2,993 positives, LB 0.14389 public / 0.16160 private. K1 re-runs that exact submission from the
+  `kaggle/K1-baseline-reproduction` branch to confirm reproducibility, produce a committed artifact,
+  and record the authoritative Track 2 starting point.
+- **Hypothesis:** The frozen `dataset_h` production model (`models/dataset_h_model.pkl`, payload
+  format Phase-2, threshold 0.91) running through the verified submission pipeline
+  (`scripts/generate_submission.py`) will produce the same 2,993-positive output and, upon
+  submission, reproduce the documented LB scores (public 0.14389 / private 0.16160) within
+  floating-point noise. No new training, no feature changes, no threshold tuning — pure
+  reproducibility check.
+- **Pre-registered success / failure criteria:**
+  - **Pass:** the generated `submission.csv` matches the documented run exactly (row count
+    1,183,748; positive count 2,993; Id-set verified; no NaN; threshold applied = 0.91). LB
+    submission is optional for the pre-registration step; if submitted, public LB should land at
+    0.14389 ± 0.001.
+  - **Fail / inconclusive:** any mismatch in row count, positive count, Id-set, or LB score
+    outside tolerance. Failure triggers a root-cause investigation before K2 is opened; the
+    baseline is not considered established until Pass.
+  - **Not a criterion:** absolute LB rank, comparison to other public kernels, or any metric
+    computed on production (unlabeled) data.
+- **Contamination rules (inherited from KDR-001; recorded here for K1 scope):**
+  1. All K1 artifacts (submission CSV, any diagnostic notebooks) live on
+     `kaggle/K1-baseline-reproduction` — **never** committed to `main`.
+  2. K1 uses only the production model and clean production features (`data/features/
+     test_dataset_h.parquet`). No leaky feature families, no record-adjacency magic.
+  3. Code valve remains empty: `grep -rn --include="*.py" "import.*kaggle" src/ scripts/`
+     (ex-`src/kaggle/`) must stay empty — K1 adds no new imports.
+  4. `src/kaggle/` and `scripts/kaggle/` do **not** need to be created for K1 (no competition-
+     only code introduced); they are created at the first `K` that adds leaky or competition-only
+     logic.
+  5. No leaderboard number may enter `decisions.md` or gate any `DR`/`E`.
+- **Expected artifacts:**
+  - `outputs/submission_K1.csv` — the reproduced submission file (1,183,748 rows, 0/1 column).
+  - `K1-result` tag on the commit that produces the final artifact.
+  - This KDR-002 entry updated with Evidence / Outcome / Decision once the run completes.
+  - Pending-ledger row for K1 updated to "Complete."
+- **Reproducibility requirements:**
+  - Branch: `kaggle/K1-baseline-reproduction` cut from `kaggle-main` @ `b058e58`.
+  - Model: `models/dataset_h_model.pkl` (committed; Phase-2 payload, 5 fold models, threshold 0.91).
+  - Test features: `data/features/test_dataset_h.parquet` (gitignored; regenerate with
+    `PYTHONPATH=. python scripts/build_test_dataset_h.py` if absent).
+  - Command:
+    ```bash
+    PYTHONPATH=. python scripts/generate_submission.py \
+      --model-path models/dataset_h_model.pkl \
+      --test-features data/features/test_dataset_h.parquet \
+      --output outputs/submission_K1.csv
+    ```
+  - Seed: n/a (inference only; no training randomness in this experiment).
+  - Data fingerprint: carried from Track 1 / Track 3 pipeline (`data_fingerprint` in
+    `outputs/production_decision_summary.json`).
+- **Decision:** **K1 is authorized.** Branch `kaggle/K1-baseline-reproduction` cut from
+  `kaggle-main` @ `b058e58`. Proceed with the reproducibility run. Do NOT optimize, tune, or train
+  in this experiment.
+- **Confidence:** High — this is a reproducibility check of a fully verified pipeline, not an
+  experimental probe.
+- **Next action:** Run the submission command above; record evidence (row count, positive count,
+  Id-set check, LB score if submitted); place `K1-result` tag; update this entry with
+  Evidence/Outcome/Decision; update ledger. Then design K2 (first true leaderboard probe) in
+  KDR-003.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
 |---|---|---|
 | KDR-001 | Open Track 2; fix objective, success criteria, contamination rules, `K`-numbering | **Decided — track open (2026-06-28)** |
-| K1 | (to be designed) | Pending — pre-register in `KDR-002` before any Kaggle code |
+| KDR-002 | Pre-register K1: baseline reproduction from frozen production candidate | **Decided — K1 authorized (2026-06-28)** |
+| K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **In progress** — branch `kaggle/K1-baseline-reproduction` @ `b058e58` |
+| K2 | (to be designed) | Pending — pre-register in `KDR-003` after K1 establishes baseline |
