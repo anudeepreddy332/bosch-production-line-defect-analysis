@@ -1,0 +1,92 @@
+{
+  "overall_pass": true,
+  "modules": [
+    {
+      "module": "decision_system",
+      "pass": true,
+      "checks": {
+        "summary_exists": true,
+        "table_exists": true,
+        "table_non_empty": true,
+        "no_nan_numeric": true,
+        "recall_in_range": true,
+        "precision_in_range": true,
+        "cost_positive": true
+      },
+      "key_metrics": {
+        "minimum_cost_total": 473095.0,
+        "minimum_cost_recall": 0.4505015263846489,
+        "minimum_cost_precision": 0.1401121258703318
+      }
+    },
+    {
+      "module": "batch_simulation",
+      "pass": true,
+      "checks": {
+        "summary_exists": true,
+        "mode_valid": true,
+        "policy_present": true,
+        "recall_in_range": true,
+        "precision_in_range": true,
+        "flagged_pct_in_range": true
+      },
+      "key_metrics": {
+        "recall": 0.6032564797396063,
+        "precision": 0.0656,
+        "flagged_pct": 5.0
+      }
+    },
+    {
+      "module": "monitoring",
+      "pass": true,
+      "checks": {
+        "summary_exists": true,
+        "html_exists": true,
+        "engine_evidently": true,
+        "dataset_drift_fields": true,
+        "prediction_drift_fields": true,
+        "drift_share_in_range": true
+      },
+      "key_metrics": {
+        "drifted_columns_count": 0,
+        "drift_share": 0.0,
+        "prediction_drift_detected": false
+      }
+    },
+    {
+      "module": "cross_check",
+      "pass": true,
+      "checks": {
+        "batch_recall_not_far_below_min_cost_recall": true,
+        "batch_precision_not_far_above_1": true,
+        "decision_precision_valid": true
+      },
+      "notes": {
+        "decision_min_cost_recall": 0.4505015263846489,
+        "batch_recall": 0.6032564797396063,
+        "decision_min_cost_precision": 0.1401121258703318,
+        "batch_precision": 0.0656
+      }
+    },
+    {
+      "module": "production_inference",
+      "pass": true,
+      "checks": {
+        "at_least_one_batch": true,
+        "required_columns_present": true,
+        "response_absent": true,
+        "state_file_exists": true,
+        "state_file_valid_json": true,
+        "state_required_keys": true,
+        "monitoring_exists": true,
+        "monitoring_valid_json": true,
+        "monitoring_required_keys": true,
+        "monitoring_has_prediction_drift": true,
+        "monitoring_has_dataset_drift": true
+      },
+      "key_metrics": {
+        "batch_count": 5
+      }
+    }
+  ]
+}

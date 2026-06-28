@@ -9,6 +9,18 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "outputs"
 MON = OUT / "monitoring"
+PROD_DIR = OUT / "production" / "dataset_h"
+STATE_FILE = PROD_DIR / "dataset_h_batch_state.json"
+
+_REQUIRED_PRED_COLS: frozenset[str] = frozenset(
+    {"Id", "risk_score", "decision", "batch_id", "cycle_id", "run_seq"}
+)
+_REQUIRED_STATE_KEYS: frozenset[str] = frozenset(
+    {"pointer", "cycle_id", "batch_id", "run_seq", "dataset_rows"}
+)
+_REQUIRED_EVIDENTLY_KEYS: frozenset[str] = frozenset(
+    {"engine", "reference_rows", "current_rows", "summary"}
+)
 
 
 def load_json(path: Path) -> dict:
@@ -27,14 +39,16 @@ def validate_decision_module() -> dict:
     table_path = OUT / "production_decision_table.csv"
 
     summary = load_json(decision_path)
-    table = pd.read_csv(table_path)
+
+    table_exists = table_path.exists()
+    table = pd.read_csv(table_path) if table_exists else None
 
     min_cost = summary["operating_points"]["minimum_cost_configuration"]
     checks = {
         "summary_exists": decision_path.exists(),
-        "table_exists": table_path.exists(),
-        "table_non_empty": len(table) > 0,
-        "no_nan_numeric": check_no_nan_numeric(table),
+        "table_exists": table_exists,
+        "table_non_empty": (len(table) > 0) if table is not None else False,
+        "no_nan_numeric": check_no_nan_numeric(table) if table is not None else False,
         "recall_in_range": 0.0 <= float(min_cost["recall"]) <= 1.0,
         "precision_in_range": 0.0 <= float(min_cost["precision"]) <= 1.0,
         "cost_positive": float(min_cost["total_cost"]) > 0,
@@ -122,6 +136,69 @@ def validate_monitoring_module() -> dict:
     }
 
 
+def validate_production_inference() -> dict:
+    batch_files = sorted(PROD_DIR.glob("cycle=*/batch=*/predictions.parquet"))
+
+    checks: dict[str, bool] = {}
+    checks["at_least_one_batch"] = len(batch_files) > 0
+
+    if batch_files:
+        cols_ok = True
+        response_absent = True
+        for path in batch_files:
+            cols = set(pd.read_parquet(path).columns)
+            if not _REQUIRED_PRED_COLS.issubset(cols):
+                cols_ok = False
+            if "Response" in cols:
+                response_absent = False
+        checks["required_columns_present"] = cols_ok
+        checks["response_absent"] = response_absent
+    else:
+        checks["required_columns_present"] = False
+        checks["response_absent"] = True
+
+    checks["state_file_exists"] = STATE_FILE.exists()
+    if STATE_FILE.exists():
+        try:
+            state = json.loads(STATE_FILE.read_text())
+            checks["state_file_valid_json"] = True
+            checks["state_required_keys"] = _REQUIRED_STATE_KEYS.issubset(state.keys())
+        except (json.JSONDecodeError, Exception):
+            checks["state_file_valid_json"] = False
+            checks["state_required_keys"] = False
+    else:
+        checks["state_file_valid_json"] = False
+        checks["state_required_keys"] = False
+
+    mon_path = MON / "evidently_summary.json"
+    checks["monitoring_exists"] = mon_path.exists()
+    if mon_path.exists():
+        try:
+            mon = json.loads(mon_path.read_text())
+            checks["monitoring_valid_json"] = True
+            checks["monitoring_required_keys"] = _REQUIRED_EVIDENTLY_KEYS.issubset(mon.keys())
+            s = mon.get("summary", {})
+            checks["monitoring_has_prediction_drift"] = "prediction_drift" in s
+            checks["monitoring_has_dataset_drift"] = "dataset_drift" in s
+        except (json.JSONDecodeError, Exception):
+            checks["monitoring_valid_json"] = False
+            checks["monitoring_required_keys"] = False
+            checks["monitoring_has_prediction_drift"] = False
+            checks["monitoring_has_dataset_drift"] = False
+    else:
+        checks["monitoring_valid_json"] = False
+        checks["monitoring_required_keys"] = False
+        checks["monitoring_has_prediction_drift"] = False
+        checks["monitoring_has_dataset_drift"] = False
+
+    return {
+        "module": "production_inference",
+        "pass": all(checks.values()),
+        "checks": checks,
+        "key_metrics": {"batch_count": len(batch_files)},
+    }
+
+
 def cross_check_consistency(decision: dict, batch: dict) -> dict:
     min_recall = decision["key_metrics"]["minimum_cost_recall"]
     batch_recall = batch["key_metrics"]["recall"]
@@ -151,8 +228,9 @@ if __name__ == "__main__":
     batch = validate_batch_module()
     monitoring = validate_monitoring_module()
     cross = cross_check_consistency(decision, batch)
+    production = validate_production_inference()
 
-    modules = [decision, batch, monitoring, cross]
+    modules = [decision, batch, monitoring, cross, production]
     report = {
         "overall_pass": all(m["pass"] for m in modules),
         "modules": modules,

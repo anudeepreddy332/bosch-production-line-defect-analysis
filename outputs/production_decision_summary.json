@@ -85,7 +85,7 @@
       "available": true
     },
     "best_precision_recall_balance": {
-      "source": "production_threshold_sweep",
+      "source": "max_recall_threshold_sweep",
       "mode": "threshold",
       "configuration": "thr=0.54",
       "inspection_budget_pct": 0.3679840371295556,

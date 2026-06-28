@@ -10,13 +10,13 @@
   "summary": {
     "dataset_drift": {
       "drifted_columns_count": 0,
-      "number_of_columns": 4,
+      "number_of_columns": 1,
       "drift_share": 0.0
     },
     "prediction_drift": {
       "column": "pred",
       "drift_detected": false,
-      "drift_score": 0.01756736145522506,
+      "drift_score": 0.02432938304124138,
       "threshold": 0.1
     },
     "drifted_columns": []

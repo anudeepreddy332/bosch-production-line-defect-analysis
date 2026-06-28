@@ -4,11 +4,11 @@
 
 | Track | Description | Progress | State |
 |-------|-------------|----------|-------|
-| Track 1 | Offline Research | 95% | Pending freeze |
-| Track 2 | Kaggle | 10% | — |
-| Track 3 | Production | 70% | — |
+| Track 1 | Offline Research | 100% | Frozen (DR-015, branch `research/rp2-temporal-robustness` merged) |
+| Track 2 | Kaggle | 10% | Not started end-to-end |
+| Track 3 | Production | 100% | Pending freeze (cleanup complete; freeze tag pending) |
 
-**Current Active Track:** Phase 0 — Freeze Track 1
+**Current Active Track:** Phase 1 cleanup milestone — freeze Track 3, then open Kaggle
 
 ---
 
@@ -111,15 +111,28 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   resets per cycle, cycle_id increments on wraparound; a separate `run_seq` field is the
   lifetime-monotonic counter).
 
-  **S3 upload of Track 3's partitioned output is now wired** (`src/utils/s3_utils.py`'s
+  **S3 upload of Track 3's partitioned output is wired** (`src/utils/s3_utils.py`'s
   `upload_file_append_only`/`key_exists`, called from `scripts/run_production_inference.py`
   after the local parquet write, before state advances — upload-then-advance, failure-loud,
-  never overwrites an existing key; `--no-s3` skips it for local-only runs). **Still not yet
-  done** (separate follow-up, not this change): a dashboard Production Monitoring view (View A
-  below) rendering Track 3's output; `scripts/run_drift_monitoring.py` is still Track-1-shaped
-  (reads `meta_dataset.parquet` with `Response`) and was not touched by this change — it has the
-  same mislabeling pattern this section used to describe, just not yet addressed for the
-  monitoring script specifically.
+  never overwrites an existing key; `--no-s3` skips it for local-only runs).
+
+  **`scripts/run_drift_monitoring.py` is genuinely label-free** (T3-1): it reads only the
+  production batch parquets under `outputs/production/dataset_h/`, never `meta_dataset.parquet`
+  or any file containing `Response`. It renames `risk_score` → `pred` for Evidently's API and
+  runs a 70/30 temporal split. After structural-column exclusion, Evidently sees exactly one
+  column. **Score-distribution drift only** — both `dataset_drift` and `prediction_drift` in
+  the Evidently summary are KS tests on the single `risk_score` column; they are not
+  independent signals and do not cover input-feature drift.
+
+  **Dashboard View A (Production Monitoring)** is fully wired (T3-2): the "Production
+  Monitoring (Track 3)" Streamlit page reads `outputs/monitoring/evidently_summary.json` and
+  renders prediction drift detected/score, dataset drift, drifted-columns count, drift share,
+  and last-run timestamp. All panels are label-free (no supervised metric).
+
+  **Validator extended** (T3-3): `scripts/validate_system.py` includes
+  `validate_production_inference()` — asserts batch existence, required output columns,
+  `Response` absence, state file validity, and Evidently schema. Runs as part of the
+  canonical `python scripts/validate_system.py` entry point.
 
 ---
 
@@ -132,16 +145,17 @@ Splitting them into Track 2 and Track 3 makes each one's contract checkable on i
   throughput, latest batch/cycle, top risky parts.
 - **Must NOT show** MCC, precision, recall, accuracy, TP, FP, TN, FN, or a confusion matrix,
   because production/test batches are unlabeled.
-- **Current state: exists for Track 3's predictions/risk-score output.**
-  `apps/streamlit_dashboard/app.py`'s new "Production Monitoring (Track 3)" page lists and
-  concatenates every `predictions/cycle=*/batch=*/predictions.parquet` object in S3, runtime-
-  asserts the result has no `Response` column, and renders only label-free panels (total
-  predictions, latest cycle/batch/run_seq, flagged/auto-reject/manual-inspect counts, a risk-score
-  histogram, batch growth/cumulative-predictions, and a top-100-by-risk-score table) — no
-  supervised metric anywhere on the page. **Still open:** drift/data-quality rendering — a `grep`
-  for `drift`/`evidently` in that file still returns zero matches, even though
-  `scripts/run_drift_monitoring.py` already produces `outputs/monitoring/evidently_summary.json` +
-  `.html`; that output is generated but still never rendered in the dashboard.
+- **Current state: complete (T3-1 + T3-2).**
+  `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page:
+  - Lists and concatenates every `predictions/cycle=*/batch=*/predictions.parquet` object in S3.
+  - Runtime-asserts the result has no `Response` column.
+  - Renders label-free panels: total predictions, latest cycle/batch/run_seq,
+    flagged/auto-reject/manual-inspect counts, risk-score histogram, batch growth,
+    cumulative-predictions chart, top-100-by-risk-score table.
+  - Renders Evidently drift section (T3-2): prediction drift detected/score, dataset drift
+    detected, drifted-columns count, drift share, last-run timestamp. Handles missing
+    `evidently_summary.json` gracefully with a warning banner.
+  - No supervised metric (MCC/precision/recall/accuracy/TP/FP/TN/FN) anywhere on the page.
 
 ### View B — Offline Evaluation / Decision Analysis View (this is what exists today)
 
@@ -179,8 +193,8 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
 | Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Script exists** (`scripts/generate_submission.py`), but blocked end-to-end by two pre-existing gaps: no engineered test feature table, and committed models are pre-Phase-2 bare estimators — see `docs/kaggle_submission.md` |
-| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Exists for `dataset_h`**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics) and wired into `scripts/run_full_system.py`'s "production" stage. The old mislabeled script is now `scripts/run_offline_batch_eval.py`, honestly Track 1. S3 upload of Track 3's partitioned output is wired (append-only, upload-then-advance), and Dashboard View A (next row) now renders it. Still open: drift in the dashboard |
-| Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Exists for predictions/risk-scores** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page (label-free, verified no `Response`/no supervised metrics). Still open: drift/data-quality rendering (Evidently output exists but isn't wired into this view) |
+| Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Complete**: `scripts/run_production_inference.py` is genuinely label-free (verified: no `Response`, no supervised metrics). State machine (pointer/cycle_id/batch_id/run_seq), append-only S3 upload (upload-then-advance), and Dashboard View A all wired. `run_drift_monitoring.py` reads production batches, not labeled data (score-distribution drift, single `risk_score` column). `validate_system.py` extended with `validate_production_inference()`. 5 batches scored (50,000 rows). Freeze-pending. |
+| Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Complete** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page. Renders predictions/risk scores (label-free, `Response`-absent verified) AND Evidently drift section (score, detected flag, drifted-column count, drift share, timestamp). Handles missing monitoring output gracefully. |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
 
 ---
@@ -226,19 +240,24 @@ Done only when every box below is true. The roadmap (next section) gates transit
 
 ### Track 3 — Production Inference Simulation — Definition of Done
 
-- [ ] Frozen approved model scores unlabeled simulated batches; output carries predictions/risk
+- [x] Frozen approved model scores unlabeled simulated batches; output carries predictions/risk
       scores + batch/cycle state + timestamps, with **zero** MCC/precision/recall/accuracy/
-      TP/FP/TN/FN/confusion matrix (grep-verified).
-- [ ] Append-only S3 partitioned output (upload-then-advance, never overwrite an existing key).
-- [ ] **Label-free drift:** `run_drift_monitoring.py` runs on Track 3's label-free output (not on
-      labeled `meta_dataset.parquet`), and its Evidently summary is rendered in Dashboard View A.
-- [ ] Dashboard split clean: View A (Production Monitoring, label-free) and View B (Offline
-      Evaluation, labeled OOF) separated and correctly labeled; no supervised metric on View A.
-- [ ] Case study reports deployable performance as the **measured regime distribution** with the
+      TP/FP/TN/FN/confusion matrix (grep-verified). *(T3-1: `run_production_inference.py`)*
+- [x] Append-only S3 partitioned output (upload-then-advance, never overwrite an existing key).
+- [x] **Label-free score-distribution drift:** `run_drift_monitoring.py` runs on Track 3's
+      label-free output (production batch parquets only, no `Response`), and its Evidently
+      summary is rendered in Dashboard View A. Drift is computed on the single `risk_score`
+      column — not input-feature drift. *(T3-1 + T3-2)*
+- [x] Dashboard split clean: View A (Production Monitoring, label-free) exists and renders
+      both batch stats and Evidently drift section; no supervised metric on View A.
+      View B (Offline Evaluation, labeled OOF) is separated by the top-of-page caption.
+      *(T3-2; remaining View-B per-page relabel / `live_df` rename tracked as post-freeze cleanup)*
+- [x] Case study reports deployable performance as the **measured regime distribution** with the
       static-threshold-non-transfer caveat (the RP2 handoff), not a single in-CV number.
+      *(T3-4: `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` updated)*
 
-*Status: core label-free path exists (`run_production_inference.py`, View A); pending label-free
-drift wiring + View-B relabel + case-study handoff.*
+*Status: all DoD items complete. Pending: freeze tag (`track3-frozen`) once this cleanup batch
+is committed.*
 
 ---
 
@@ -300,18 +319,18 @@ follow-up, not actioned here:
    new script, not a rewrite of the old one). `run_batch_simulation.py` is now
    `scripts/run_offline_batch_eval.py`, honestly Track 1. `scripts/run_production_inference.py`
    is the new, genuinely label-free Track 3 (dataset_h only). See the Track 3 section above.
-2. **Partially resolved.** `apps/streamlit_dashboard/app.py` now has a Production Monitoring
-   (Track 3) view (View A), label-free and backed by real S3 output. **Still open:** no rendering
-   of the existing Evidently drift output in either view; the View B pages' naming (`live_df`,
-   `load_scoring_data`) still implies live data when the source is labeled OOF data (only a single
-   top-of-page caption distinguishes the views so far).
-3. **Partially resolved.** `docs/architecture.md`'s "Production Architecture" diagram now has a
-   text note distinguishing the label-dependent path from Track 3, but the diagram itself hasn't
-   been redrawn with a Track 3 node.
-4. **Partially resolved.** `README.md`'s "Production Pipeline" section and
-   `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md` §8 now correctly attribute the labeled
-   Track-1-sourced numbers and point to the new Track 3 script; the dashboard split itself
-   (item 2) is now partially resolved too, but the per-page View B relabel/rename is still open.
+2. **Resolved** (T3-2). `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)"
+   view now renders Evidently drift output (score, detected flag, drifted-column count, drift
+   share, timestamp). **Still open (post-freeze cleanup):** View B per-page relabel and
+   `live_df`/`load_scoring_data` rename to eliminate misleading live-data naming for labeled OOF.
+3. **Resolved** (freeze cleanup batch). `docs/architecture.md` redrawn with two separate
+   Mermaid diagrams — one for Track 1 (labeled OOF flow) and one for Track 3 (label-free
+   production flow). The stale single diagram with `Batch Logs\nrecall/precision/flagged` under
+   "Production Architecture" is gone.
+4. **Resolved** (T3-4 + freeze cleanup batch). `docs/CASE_STUDY_BOSCH_PRODUCTION_SYSTEM.md`
+   updated with RP2 honest distribution (§7), label-free monitoring status (§9), and Track 3
+   Achieved items (§12). `README.md` updated with RP2 distribution and Production Monitoring
+   dashboard feature. Per-page View B relabel/rename remains open (see item 2).
 5. Track 2 (Kaggle submission) now has `scripts/generate_submission.py`, but needs (a) a
    test-side feature-engineering script analogous to `build_dataset_{baseline,g,h}.py`, (b)
    persisted OOF-safe rate-lookup tables so `dataset_g`/`dataset_h`/`meta_model` features can be

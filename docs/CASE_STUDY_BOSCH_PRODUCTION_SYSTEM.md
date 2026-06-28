@@ -26,16 +26,15 @@
 ## Executive Summary
 We converted a competition-style ML workflow into a production decision system for failure prevention on a highly imbalanced manufacturing problem (about **0.58% failures**). Instead of optimizing only MCC, we optimized business outcomes: failures caught, inspection load, and cost.
 
-On the final decision layer:
-- **Minimum-cost operating point**: threshold `0.23`
-  - Recall: **0.4505**
-  - Precision: **0.1401**
-  - Total cost: **473,095** (FN=100, FP=5)
-- **High-recall operating point (10% inspection budget)**:
-  - Recall: **0.6321**
-  - Precision: **0.0367**
+RP2 (research complete, DR-015) establishes the **honest deployable operating distribution** via 5-fold rolling-origin forward-chaining (`outputs/e3_rolling_origin_results.json`):
+- Deployable MCC across operating windows: **0.06–0.18** (mean ≈ 0.12, 95% CI [0.05, 0.19])
+- Non-stationarity (prevalence shift) dominates deployment behavior
+- Static threshold transfer fails: optimal threshold ranged **0.14–0.72** across windows; a fixed threshold is not deployable
+- Model ranking (AUC ≈ 0.55) is stable across regimes — the binding problem is the operating point, not the ranking
 
-This creates a practical control system where operations can choose policy based on staffing and quality risk appetite.
+Track 3 label-free production inference and Evidently drift monitoring are now live. Historical World-B operating points (unverifiable; see warning above) are preserved in Section 7 as worked examples of the decision framework methodology.
+
+This creates a practical control system where operations can choose policy based on staffing and quality risk appetite, subject to periodic threshold recalibration as the operating regime shifts.
 
 ---
 
@@ -70,7 +69,7 @@ Some offline gains in this problem class can come from brittle patterns that do 
 - stable policy behavior,
 - explainable trade-offs.
 
-Result: lower headline MCC than leaderboard targets, but far stronger deployability.
+Result: lower headline MCC than leaderboard targets, and a measured deployability — not an assumed one. RP2 (DR-011 through DR-015) quantified this via rolling-origin forward-chaining: honest MCC is 0.06–0.18 across operating windows (mean ≈ 0.12), with non-stationarity identified as the binding limiter rather than model capacity or feature representation. The correct production claim is a regime distribution, not a single deployable number.
 
 ---
 
@@ -99,7 +98,42 @@ This lets operations tune between recall and workload.
 ---
 
 ## 7. Measured Operating Points (From Real Outputs)
-From `outputs/production_decision_summary.json` and related CSVs:
+
+### RP2 Honest Deployable Distribution (authoritative, reproducible)
+
+From `outputs/e3_rolling_origin_results.json` (E3, DR-011/DR-012/DR-015). These numbers are reproducible by running `scripts/train_e3_rolling_origin.py`.
+
+| Metric | Value |
+|---|---|
+| Rolling-origin MCC range (5 windows) | **0.061–0.182** |
+| Mean MCC | **0.119** (std 0.054) |
+| 95% CI | [0.052, 0.187] |
+| In-CV MCC (random-group, interpolation-optimistic) | 0.153 |
+| Mean degradation vs. in-CV | −22% |
+| Prevalence ↔ MCC correlation | 0.68 |
+
+Per-window detail:
+
+| Fold | Chunks | Test prevalence | Oracle threshold | MCC at oracle | MCC at fixed 0.91 |
+|---|---|---|---|---|---|
+| 0 | 18–33 | 0.80% | 0.14 | **0.080** | ~0 |
+| 1 | 34–49 | 0.78% | 0.40 | **0.182** | 0.033 |
+| 2 | 50–64 | 0.94% | 0.72 | **0.170** | 0.047 |
+| 3 | 65–82 | 0.33% | 0.40 | **0.061** | 0.055 |
+| 4 | 83–118 | 0.39% | 0.62 | **0.104** | 0.042 |
+
+Key deployment findings (DR-011 through DR-015):
+- **Non-stationarity dominates**: failure-rate prevalence shifts from 0.33% to 0.94% across temporal windows, which drives most of the MCC variation
+- **Static threshold not deployable**: fixed 0.91 yields MCC ≈ 0–0.06 across all windows; optimal threshold varied 0.14–0.72; H_threshold_nontransfer settled at confidence 0.92
+- **Ranking is stable**: AUC ≈ 0.55 across all regimes (degradation = −0.001); the model's ranking quality is not the bottleneck
+- **Hard-regime difficulty is substantially intrinsic**: prevalence-matched control confirms fold-3's extra difficulty persists even after controlling for prevalence; the hard pocket was transient (evaporated in fold 4), not a predictable stable regime
+- **Production monitoring is label-free**: Evidently drift monitor alerts to regime entry without requiring `Response` labels; expected response is threshold recalibration, not model replacement
+
+---
+
+### Historical World-B Operating Points (unverifiable; for methodology illustration only)
+
+From `outputs/production_decision_summary.json` and related CSVs (see ⚠️ warning above — artifacts deleted, not reproducible from current code):
 
 ### Minimum Cost (FN=100, FP=5)
 - Threshold: `0.23`
@@ -141,13 +175,22 @@ Interpretation: batch behavior is consistent with operating-point analysis.
 ---
 
 ## 9. Monitoring and Drift
-From `outputs/monitoring/evidently_summary.json`:
-- Engine: **Evidently**
-- Drifted columns count: **0 / 4**
-- Drift share: **0.0**
-- Prediction drift: **not detected**
 
-Monitoring excludes identifier columns and uses stable reference/current split.
+Track 3 label-free drift monitoring is live (`scripts/run_drift_monitoring.py`). The Evidently monitor reads exclusively from the production batch prediction parquets (`outputs/production/dataset_h/cycle=*/batch=*/predictions.parquet`) — no `Response` column is present or used. A temporal 70/30 split (earlier rows = reference baseline; later rows = current window) is applied before drift detection.
+
+**Scope — score-distribution drift only.** After structural columns are excluded (batch_id, cycle_id, run_seq, scored_at_utc, decision, auto_reject, manual_inspect) and Evidently's own ID-column filter removes `Id`, the monitor operates on a single column: `risk_score` (renamed to `pred` for Evidently's API). Both the "dataset drift" and "prediction drift" metrics in the summary are computed on this one column and reflect the same underlying KS test on the score distribution. They are not independent signals and do not cover input-feature drift. This is a deliberate design choice: monitoring input features requires the test feature table, which is not always available at monitoring time; score-distribution drift is a sufficient first-alert proxy and requires only the label-free prediction output.
+
+From `outputs/monitoring/evidently_summary.json` (current run, 50,000 production rows):
+- Engine: **Evidently**
+- Reference rows: **35,000** / Current rows: **15,000**
+- Monitored columns: **1** (`risk_score`)
+- Drifted columns count: **0**
+- Drift share: **0.0**
+- Drift score (KS): **0.024** (threshold: 0.1) — not detected
+
+The Streamlit dashboard "Production Monitoring" view (`apps/streamlit_dashboard/app.py`) reads this file and displays drift status live. `scripts/validate_system.py` asserts the monitoring schema in its `production_inference` module.
+
+**Interpreting alerts in the RP2 context**: given that honest MCC varies 0.06–0.18 across regimes, a drift alert indicates regime entry (prevalence or score-distribution shift). The expected operational response is threshold recalibration against recent data, not model replacement — the model's ranking (AUC ≈ 0.55) is stable across regimes.
 
 ---
 
@@ -174,16 +217,24 @@ Start point options:
 ---
 
 ## 12. Production Readiness Status
-Achieved:
+
+### Achieved — Offline / Decision Layer (Track 1)
 - Reproducible end-to-end runner (`scripts/run_full_system.py`)
 - API + dashboard + Docker definitions
-- Evidently HTML + JSON drift reports
-- Cleanup and archive of experimental notebooks
+- Offline batch simulation (labeled OOF replay, `scripts/run_offline_batch_eval.py`)
+- RP2 research phase complete (DR-015): honest deployable performance distribution measured and documented
 
-Remaining practical next steps:
-- Integrate real-time feedback loop from manual inspection outcomes
-- Add alerting around drift and KPI thresholds
-- Add policy auto-tuning by line/station context
+### Achieved — Production Layer (Track 3)
+- Label-free production batch inference (`scripts/run_production_inference.py`): 5 batches scored (50,000 rows), append-only partitioned output under `outputs/production/dataset_h/`
+- Persistent cycle/batch state (`dataset_h_batch_state.json`): pointer, cycle_id, batch_id, run_seq
+- Evidently drift monitoring reading from production batches, no labels required (`scripts/run_drift_monitoring.py`)
+- `validate_system.py` extended with `validate_production_inference()`: asserts batch existence, required columns, `Response` absence, state file validity, and monitoring schema
+- Streamlit dashboard "Production Monitoring" view wired to `evidently_summary.json` and production batch stats
+
+### Remaining Work
+- **Threshold recalibration policy**: the static default threshold is not deployable across regimes (H_threshold_nontransfer, confidence 0.92). The system needs a periodic recalibration step that updates the operating threshold against recent labeled outcomes when label feedback becomes available.
+- **Automated drift alerting**: trigger an operator notification when the Evidently drift score exceeds the configured threshold; current monitoring is passive (requires manual dashboard check).
+- **Label feedback integration**: when manual inspection outcomes are recorded, enable calibration-drift detection (supervised signal) in addition to the current unsupervised score-distribution monitoring.
 
 ---
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,10 +20,23 @@ from src.evaluation.decision_system import CostConfig, build_decision_table, sum
 from src.utils.s3_utils import BUCKET_NAME, s3
 from io import BytesIO
 
+MONITORING_JSON = ROOT / "outputs" / "monitoring" / "evidently_summary.json"
+
 
 def load_parquet_from_s3(key: str):
     obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
     return pd.read_parquet(BytesIO(obj["Body"].read()))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_monitoring_summary() -> dict | None:
+    if not MONITORING_JSON.exists():
+        return None
+    with open(MONITORING_JSON) as f:
+        data = json.load(f)
+    mtime = os.path.getmtime(MONITORING_JSON)
+    data["_file_mtime"] = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return data
 
 
 # Track 3 (label-free production batch inference): cycle/batch-partitioned output written
@@ -590,6 +606,61 @@ elif nav == "Production Monitoring (Track 3)":
         "This page never shows MCC, precision, recall, accuracy, or a confusion matrix -- "
         "production batches are unlabeled by construction."
     )
+
+    # --- Evidently Drift Monitoring ---
+    st.markdown("### Evidently Drift Monitoring")
+    mon = load_monitoring_summary()
+    if mon is None:
+        st.warning(
+            "No monitoring output found. Run `scripts/run_drift_monitoring.py` to generate "
+            f"`outputs/monitoring/evidently_summary.json`."
+        )
+    else:
+        pred_drift = mon.get("summary", {}).get("prediction_drift", {})
+        dataset_drift = mon.get("summary", {}).get("dataset_drift", {})
+
+        pred_drift_detected: bool = bool(pred_drift.get("drift_detected", False))
+        pred_drift_score: float | None = pred_drift.get("drift_score")
+        drifted_cols: int = int(dataset_drift.get("drifted_columns_count", 0))
+        drift_share: float | None = dataset_drift.get("drift_share")
+        dataset_drift_detected: bool = drifted_cols > 0
+
+        run_ts: str = mon.get("_file_mtime", "unknown")
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(
+            "Prediction Drift",
+            "YES" if pred_drift_detected else "NO",
+            delta=None,
+        )
+        m2.metric(
+            "Prediction Drift Score",
+            f"{pred_drift_score:.4f}" if pred_drift_score is not None else "n/a",
+        )
+        m3.metric(
+            "Dataset Drift",
+            "YES" if dataset_drift_detected else "NO",
+        )
+        m4.metric(
+            "Drifted Columns",
+            str(drifted_cols),
+        )
+
+        extra_cols = st.columns(2)
+        if drift_share is not None:
+            extra_cols[0].metric("Drift Share", f"{drift_share:.2%}")
+        extra_cols[1].caption(f"Last monitoring run: {run_ts}")
+
+        if pred_drift_detected or dataset_drift_detected:
+            st.error(
+                "Drift detected — review the Evidently report at "
+                "`outputs/monitoring/evidently_report.html` for details."
+            )
+        else:
+            st.success("No drift detected in the current monitoring window.")
+
+    st.markdown("---")
+    # --- End Evidently Drift Monitoring ---
 
     if st.button("🔄 Refresh from S3"):
         load_production_batches.clear()

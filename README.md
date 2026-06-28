@@ -84,7 +84,16 @@ Dashboard + API + Monitoring
 - Best MCC: ~0.317 *(World B, historical/unverified — see note above)*
 - Recall @ 10% inspection: ~0.63 *(World B, historical/unverified — see note above)*
 - Precision: low (expected due to imbalance)
-- Fully production-safe pipeline
+
+**RP2 honest deployable distribution** (reproducible, rolling-origin forward-chaining,
+`outputs/e3_rolling_origin_results.json`):
+- Deployable MCC range across 5 temporal windows: **0.06–0.18** (mean ≈ 0.12, CI [0.05, 0.19])
+- Non-stationarity (prevalence shift 0.33%–0.94%) dominates deployment behavior
+- Static threshold not deployable: optimal threshold ranged 0.14–0.72 across windows
+- AUC ≈ 0.55 stable — ranking quality is not the bottleneck; operating point is
+
+Track 3 label-free production inference (5 batches, 50,000 rows) and Evidently score-distribution
+drift monitoring are deployed and wired to the dashboard.
 
 ---
 
@@ -132,6 +141,14 @@ AWS S3, and EC2 deployment — including current known gaps — live in
 
 ## 📈 Dashboard Features
 
+**View A — Production Monitoring (Track 3, label-free)**
+* Batch/cycle/run-sequence progress
+* Risk-score distribution histogram
+* Flagged / auto-reject / manual-inspect counts
+* Score-distribution drift (Evidently: KS test on `risk_score`)
+* Top-100-by-risk-score table
+
+**View B — Offline Evaluation / Decision Analysis (labeled OOF data)**
 * Threshold tuning
 * Inspection budget simulation
 * Recall vs precision trade-offs
