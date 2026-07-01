@@ -5,10 +5,10 @@
 | Track | Description | Progress | State |
 |-------|-------------|----------|-------|
 | Track 1 | Offline Research | 100% | Frozen (DR-015, branch `research/rp2-temporal-robustness` merged) |
-| Track 2 | Kaggle | 20% | **Open** (KDR-001/KDR-002, 2026-06-28; `kaggle-main` @ `b058e58`). K1 pre-registered; branch `kaggle/K1-baseline-reproduction` created |
+| Track 2 | Kaggle | ~55% | **Open** (KDR-001–KDR-004, 2026-06-28 to 2026-07-02; `kaggle-main` synced with origin). K1/K2/K3 complete and merged; KDR-005 (K4, label-free timing-cohort features) next |
 | Track 3 | Production | 100% | Frozen (tag: `track3-frozen`, commit: `f743da3`) |
 
-**Current Active Track:** Track 2 (Kaggle) — K1 in progress on `kaggle/K1-baseline-reproduction`. Governance: `docs/research/kaggle_decisions.md` (`KDR-002`). Next: run K1 baseline reproduction, tag `K1-result`, then design K2 in `KDR-003`.
+**Current Active Track:** Track 2 (Kaggle) — K1 (honest baseline, public 0.14389/private 0.16160), K2 (record-adjacency magic, public 0.31699/private 0.32702), and K3 (adjacency attribution: position-only public 0.31791/private 0.33161, label-only public 0.10065/private 0.10530 — neighbor-label leakage confirmed dead) are all complete, tagged (`K1-result`/`K2-result`/`K3-result`), and merged to `kaggle-main`. Governance: `docs/research/kaggle_decisions.md` (`KDR-001`–`KDR-004`). Next: ratify `KDR-005` and implement K4 (label-free timing-cohort features).
 
 ---
 
@@ -192,7 +192,7 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 | Track / View | Target | Current state |
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
-| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Open** (`KDR-001/KDR-002`, 2026-06-28; `kaggle-main` @ `b058e58`). K1 pre-registered and in progress on `kaggle/K1-baseline-reproduction`: reproduce `dataset_h` submission, establish authoritative Track 2 baseline. |
+| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Open** (`KDR-001`–`KDR-004`, 2026-06-28 to 2026-07-02). K1 (honest baseline), K2 (record-adjacency magic), K3 (adjacency attribution) complete, tagged, merged to `kaggle-main`. K4 (label-free timing-cohort features, `KDR-005`) next. |
 | Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Frozen** (tag: `track3-frozen`, commit: `f743da3`). 5 batches scored (50,000 rows). All DoD items met and validated (`validate_system.py` → `overall_pass: True`). |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Complete** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page. Renders predictions/risk scores (label-free, `Response`-absent verified) AND Evidently drift section (score, detected flag, drifted-column count, drift share, timestamp). Handles missing monitoring output gracefully. |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |

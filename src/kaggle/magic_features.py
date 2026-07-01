@@ -50,6 +50,12 @@ _SUFFIXES: tuple[str, ...] = (
 
 MAGIC_FEATURE_COLS: list[str] = [f"{prefix}_{suffix}" for prefix in SORT_ORDERS for suffix in _SUFFIXES]
 
+# K3 (KDR-004 SS4): the two column subsets used to attribute K2's LB gain between record
+# proximity (label-free) and neighbor-label lookup (label-touching, contaminated OOF by
+# construction). Named here once so no training/eval script re-derives the split.
+TRAIN_RESP_MAGIC_COLS: list[str] = [c for c in MAGIC_FEATURE_COLS if "train_resp" in c]
+POSITION_ONLY_MAGIC_COLS: list[str] = [c for c in MAGIC_FEATURE_COLS if "train_resp" not in c]
+
 
 def _concat_train_test(train_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.DataFrame:
     train = train_df[["Id", "start_time", "Response"]].copy()
