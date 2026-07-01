@@ -792,11 +792,10 @@ required. Code valve (`grep -rn --include="*.py" "import.*kaggle" src/ scripts/`
   submissions) measure both LB scores. Record evidence here, tag `K3-result`, merge to
   `kaggle-main` only. Design K4 (timing-cohort, KDR-005) informed by K3's verdict.
 
-### K3 Implementation status (2026-07-01) — build/train/submission complete, LB scores NOT yet measured
+### K3 Implementation status (2026-07-01) — build/train/submission complete
 
-**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
-classification remain **pending** until both Kaggle LB scores are measured (an outward action
-requiring separate explicit user authorization, per §5 and K1/K2 precedent).
+**Status update only** (superseded by the Evidence/Outcome/Decision sections below, added
+2026-07-02 once both Kaggle LB scores were measured).
 
 - **Branch:** `kaggle/K3-adjacency-attribution`, cut from `kaggle-main` @ `c17955a` (KDR-004
   ratified and committed first, per §7).
@@ -829,9 +828,63 @@ requiring separate explicit user authorization, per §5 and K1/K2 precedent).
   than Variant A's honest OOF (0.31761) even with label leakage folded in — the 6 `train_resp_*`
   columns alone carry less internal signal than the 18 position/delta columns. Consistent with, but
   not proof of, `H_position_dominant`; the real test is the LB.
-- **Not yet done:** Kaggle LB submission for either variant (requires separate explicit user
-  authorization), `K3-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision +
-  hypothesis classification + ledger update.
+
+### K3 Evidence — Kaggle LB (submitted 2026-07-02, manual submission by user)
+
+`outputs/kaggle/submission_K3_position_only.csv` (md5 `94d74fbd994b49bd66f89ff9cef88894`) and
+`outputs/kaggle/submission_K3_label_only.csv` (md5 `a34fb58b0c3cecdaa3a4286ad17c6c2d`) — both
+verified unchanged immediately before submission — were submitted to the
+`bosch-production-line-performance` Kaggle competition via the website (same `kagglesdk` CLI
+packaging defect as K2; user submitted manually and reported the scores below).
+
+| Metric | K1 (honest) | K2 (full magic) | K3-A (position-only) | K3-B (label-only) |
+|---|---|---|---|---|
+| Public LB | 0.14389 | 0.31699 | **0.31791** | **0.10065** |
+| Private LB | 0.16160 | 0.32702 | **0.33161** | **0.10530** |
+
+**K3-A (position-only) slightly *exceeds* K2's full-magic score on both splits** (+0.00092 public,
++0.00459 private) despite dropping the 6 `train_resp_*` columns entirely. **K3-B (label-only) falls
+*below* even the K1 honest baseline** on both splits (−0.04324 public, −0.05630 private) — the
+`train_resp_*` columns alone are actively harmful to a lean model, not merely unhelpful.
+
+**Internal-vs-external calibration resolved:** K3-A's honest OOF MCC (0.31761) matches its real LB
+(0.31791 public / 0.33161 private) to within 0.0003–0.014 — the label-free position/ordering
+features generalize almost exactly as the internal CV predicted. This confirms the K2-evidence note's
+suspicion: the internal CV's apparent gain from `train_resp_*` (contaminated OOF 0.37530 vs honest
+0.31761, a +0.058 phantom) was **entirely a chunk-aware-CV blind spot**, not real out-of-sample
+signal — real LB shows the label-touching columns *subtract* value once out of sample.
+
+### K3 Outcome
+
+**Measurement obtained, as a soft/non-binding buy per §5.** The two-variant split isolates the two
+candidate mechanisms cleanly: record-proximity (position/delta/tie-flag columns) explains the entire
+observable K2 gain and then some; neighbor-label lookup (`train_resp_*`) explains none of it and is
+actively harmful when it is the only magic signal present.
+
+### K3 Hypothesis classification (against §3 priors)
+
+| Hypothesis | Prior | Result | Verdict |
+|---|---|---|---|
+| **H_position_dominant** | 0.60 | Position-only public LB 0.31791 ≈ K2's 0.31699 (slightly exceeds it); private LB 0.33161 > K2's 0.32702 | **CONFIRMED** |
+| H_label_contributes | 0.30 | Would require position-only LB materially below 0.317 **and** label-only LB clearly above K1's 0.14389. Neither holds: position-only ≈/exceeds K2, and label-only (0.10065/0.10530) is *below* K1 | **REJECTED** |
+| H_position_optimistic | 0.10 | Would require position-only LB materially below its own OOF (0.31761). Actual public LB (0.31791) sits within 0.0003 of OOF, private (0.33161) exceeds it | **REJECTED** |
+
+Record proximity is confirmed as the **entire** source of K2's real LB gain; neighbor-label lookup
+contributes **zero** out-of-sample and actively **subtracts** value when isolated. Chunk-aware CV's
+under-blocking of record-order leakage (the H_position_optimistic concern) did **not** materialize —
+label-free record-order OOF is trustworthy. This eliminates neighbor-label leakage as a research
+direction entirely and repairs confidence in OOF-as-primary-metric for any future label-free
+record-order feature (directly informs K4/KDR-005's design).
+
+### K3 Decision
+
+**Complete.** `outputs/kaggle/submission_K3_position_only.csv` and
+`outputs/kaggle/submission_K3_label_only.csv` are the authoritative K3 artifacts (gitignored, not
+committed; reproducible on demand from committed quarantine code + pre-registered commands). Tag
+`K3-result` placed at the tip of `kaggle/K3-adjacency-attribution`, merged to `kaggle-main` only.
+KDR-004's attribution question is resolved: K2's gain is **100% record-proximity, 0% neighbor-label**.
+Design K4 (label-free timing-cohort features, informed by this verdict — neighbor-label work is
+retired) in `KDR-005`.
 
 ---
 
@@ -845,5 +898,6 @@ requiring separate explicit user authorization, per §5 and K1/K2 precedent).
 | KDR-003 | Pre-register K2: quantify the leakage gap via record-adjacency magic features | **Decided — K2 authorized (2026-06-28)** |
 | K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Complete** — public LB 0.31699 / private LB 0.32702 (~49% of gap recovered); `H_adjacency_dominant` confirmed; tag `K2-result` (2026-07-02) |
 | KDR-004 | Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage | **Decided — K3 authorized (2026-07-02)** |
-| K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Authorized, not started** — branch `kaggle/K3-adjacency-attribution` (to cut from `kaggle-main`) |
-| K4 | (to be designed) Timing-cohort reconstruction from full per-station date matrices | Pending — pre-register in `KDR-005`, design informed by K3's verdict |
+| K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Complete** — position-only public 0.31791/private 0.33161 (exceeds K2); label-only public 0.10065/private 0.10530 (below K1); `H_position_dominant` confirmed, `H_label_contributes`/`H_position_optimistic` rejected; tag `K3-result` (2026-07-02) |
+| KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | Pending — see KDR-005 below |
+| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | Pending — pre-register in `KDR-005` before branching |
