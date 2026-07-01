@@ -792,6 +792,47 @@ required. Code valve (`grep -rn --include="*.py" "import.*kaggle" src/ scripts/`
   submissions) measure both LB scores. Record evidence here, tag `K3-result`, merge to
   `kaggle-main` only. Design K4 (timing-cohort, KDR-005) informed by K3's verdict.
 
+### K3 Implementation status (2026-07-01) — build/train/submission complete, LB scores NOT yet measured
+
+**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
+classification remain **pending** until both Kaggle LB scores are measured (an outward action
+requiring separate explicit user authorization, per §5 and K1/K2 precedent).
+
+- **Branch:** `kaggle/K3-adjacency-attribution`, cut from `kaggle-main` @ `c17955a` (KDR-004
+  ratified and committed first, per §7).
+- **No new feature family, no dataset rebuild:** both variants read the existing
+  `data/features/dataset_h_magic_{train,test}.parquet` built at K2. Added only
+  `POSITION_ONLY_MAGIC_COLS` (18) / `TRAIN_RESP_MAGIC_COLS` (6) constants to
+  `src/kaggle/magic_features.py` (named split, zero recomputation) and one new training entry
+  point, `scripts/kaggle/train_k3_variant.py --variant {position_only,label_only}`, reusing
+  `train_lightgbm_oof`/`build_model_payload` from `src.training.modeling` unchanged (same LightGBM
+  hyperparameters as `dataset_h`/K2, no change logged).
+- **Submissions generated via the existing `scripts/kaggle/generate_submission_K2.py`, unmodified**
+  — it is already generic over `--model-path`/`--test-features`/`--output` and reads the feature
+  list from the payload, so both variants reused it with zero new submission code.
+
+| Field | Variant A — position_only | Variant B — label_only |
+|---|---|---|
+| Feature count | 34 (16 `dataset_h` + 18 position/delta/tie-flag) | 22 (16 `dataset_h` + 6 `train_resp_*`) |
+| Model | `outputs/kaggle/models/k3_position_only_model.pkl`, fingerprint `e02a1d4e1106fbaa` | `outputs/kaggle/models/k3_label_only_model.pkl`, fingerprint `1c98082a35397fd5` |
+| OOF MCC | **HONEST** `0.31761` (label-free; matches the K2-session ablation exactly — reproducible) | **CONTAMINATED** `0.21171` (train-neighbor `Response` leaks across folds; flagged, not comparable to an honest MCC) |
+| Threshold | `0.98` (honest — first trustworthy re-tuned threshold in the K2/K3 leaky line) | `0.95` (contaminated-OOF-derived, same caveat as K2) |
+| Submission | `outputs/kaggle/submission_K3_position_only.csv` — rows 1,183,748, positives 1,278, md5 `94d74fbd994b49bd66f89ff9cef88894` | `outputs/kaggle/submission_K3_label_only.csv` — rows 1,183,748, positives 1,470, md5 `a34fb58b0c3cecdaa3a4286ad17c6c2d` |
+| Id-set vs `sample_submission` | exact match, 0 NaN, schema `[Id, Response]` int64/int64, `Response ∈ {0,1}` | exact match, 0 NaN, schema `[Id, Response]` int64/int64, `Response ∈ {0,1}` |
+| Determinism | 2 independent submission-generation runs against the same frozen model → byte-identical (same md5) | 2 independent submission-generation runs against the same frozen model → byte-identical (same md5) |
+
+- **Firewall verified:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+  `src/kaggle/` and `scripts/kaggle/` → **empty**. Diff against `kaggle-main` base `c17955a` touches
+  only `src/kaggle/magic_features.py` (additive constants) and the new
+  `scripts/kaggle/train_k3_variant.py` — no Track 1/3 file modified.
+- **Interim observation (not the K3 verdict):** Variant B's contaminated OOF (0.21171) is *lower*
+  than Variant A's honest OOF (0.31761) even with label leakage folded in — the 6 `train_resp_*`
+  columns alone carry less internal signal than the 18 position/delta columns. Consistent with, but
+  not proof of, `H_position_dominant`; the real test is the LB.
+- **Not yet done:** Kaggle LB submission for either variant (requires separate explicit user
+  authorization), `K3-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision +
+  hypothesis classification + ledger update.
+
 ---
 
 ## Pending Kaggle experiment ledger
