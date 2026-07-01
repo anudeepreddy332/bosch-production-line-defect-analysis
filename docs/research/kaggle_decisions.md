@@ -663,6 +663,137 @@ candidate D) in `KDR-004` if pursued.
 
 ---
 
+## KDR-004 — Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage
+
+- **Date:** 2026-07-02
+- **Decision type:** Experiment pre-registration (Opus, post-K2 planning review). **Authorizes K3
+  only.** No `K4+` is authorized. This entry decomposes K2's own +0.173 public / +0.165 private LB
+  gain before any new leakage family is probed — a design entry, no code/branch/model in this
+  commit.
+
+### §1 — Trigger
+
+K2's real public LB (**0.31699**) landed almost exactly on this session's **uncontaminated**
+position-only ablation OOF MCC (**0.31761**, no `train_resp_*` columns) — not the **contaminated**
+full-magic OOF MCC (**0.37530**, which includes the explicit train-neighbor-`Response` lookup). This
+is a striking coincidence that directly bears on Track 2's stated objective (KDR-001: quantify the
+leakage gap by mechanism): **we do not yet know whether K2's real LB gain came from record
+*proximity* (label-free, e.g. `id_prev_diff`/`time_prev_diff`/`same_neighbor`) or from the neighbor
+*label* lookup (`train_resp_prev`/`train_resp_next`), or both.** K2's own KDR-003 §5 warning already
+flagged the label-touching OOF as contaminated (not a valid ranking metric); K3 resolves this on the
+only trustworthy signal — the held-out LB — before committing engineering effort to the next,
+much larger candidate family (full per-station timing-cohort reconstruction).
+
+### §2 — Imported priors (K1, K2, RP1, RP2 — no re-derivation)
+
+- **K1:** honest baseline, public 0.14389 / private 0.16160.
+- **K2:** full magic (24 cols: 18 position + 6 `train_resp`), public 0.31699 / private 0.32702.
+  Internal OOF: contaminated full-magic 0.37530; uncontaminated position-only ablation 0.31761.
+- **RP1/RP2 (imported ideas only, DR-008):** honest representation/model space is exhausted (AUC
+  ~0.55 flat, sensors add nothing durable, stacking hurts, capacity not binding) — this is why Track
+  2 exists at all, and why K3 stays inside the already-open leakage-attribution question rather than
+  re-deriving a settled honest-space negative.
+- **New finding this session (governance-relevant):** internal CV is demonstrably untrustworthy for
+  any label-touching leaky feature — the `train_resp_*` block added +0.058 phantom OOF MCC
+  (0.318→0.375) that did not survive out-of-sample (real LB 0.317). Every future family estimate
+  must be confirmed on the LB, not the OOF, until proven otherwise.
+
+### §3 — Hypotheses (entering priors, fixed before results)
+
+- **H_position_dominant (0.60):** position-only LB ≈ 0.30–0.32 (label-leak contributes ~0 out-of-
+  sample; the OOF↔LB coincidence was not a coincidence).
+- **H_label_contributes (0.30):** position-only LB materially below K2's 0.317 (e.g. ≤0.29) **and**
+  label-only LB clearly above the K1 honest baseline (both components independently generalize).
+- **H_position_optimistic (0.10):** position-only LB is materially below its own OOF (0.318) —
+  i.e. even the label-free position features are CV-optimistic (chunk-aware CV under-blocks
+  record-order leakage). A governance-relevant surprise: would mean *any* record-order feature,
+  leaky-labeled or not, needs a stronger internal safeguard than chunk grouping provides.
+
+### §4 — Feature/model specification (no new feature family — reuse K2's columns exactly)
+
+Both variants reuse the **already-computed** `MAGIC_FEATURE_COLS` from `src.kaggle.magic_features`
+(K2, unchanged) merged onto `dataset_h`'s 16 clean features (also unchanged) — no new sort order, no
+new column, no re-run of `compute_magic_features`. The existing `data/features/dataset_h_magic_{train,test}.parquet`
+(built at K2) already contain every column either variant needs; K3 does not rebuild them.
+
+- **Variant A — position-only:** `DATASET_H_FEATURE_COLS` (16) + the 18 position/delta/tie-flag
+  magic columns, **excluding** all 6 `*_train_resp_*` columns. Label-free by construction.
+- **Variant B — label-only:** `DATASET_H_FEATURE_COLS` (16) + only the 6 `*_train_resp_*` columns
+  (nearest train-neighbor `Response`, prev/next, across all 3 sort orders). Label-touching — its
+  internal OOF is contaminated by construction (same mechanism as K2's full model) and must be
+  flagged, never compared to an honest MCC.
+- **Hyperparameters:** identical LightGBM config as `dataset_h`/K2 (`train_lightgbm_oof` reused
+  unchanged) — no hyperparameter change is logged, so none is made.
+- **Threshold:** each variant's own OOF-derived `best_threshold` (from `search_best_mcc_threshold`,
+  already run inside `train_lightgbm_oof`) is used as-is. For Variant A this is an **honest**
+  threshold (uncontaminated OOF) — a incidental repair of K2's own contaminated-0.98 operating
+  point. For Variant B the threshold is contaminated, exactly as flagged for K2's full model.
+
+### §5 — Success / pass / failure criteria
+
+- **Process (BINDING):** K3 fully recorded — this pre-registration, `kaggle/K3-adjacency-attribution`
+  off `kaggle-main`, `K3-result` tag, results merged to `kaggle-main` **only**, both submissions
+  reproducible from committed quarantine code + documented commands. Firewall (§6) checks pass.
+- **Outcome (SOFT, non-binding):** a confident classification into exactly one of §3's hypotheses,
+  using the two real LB scores plus the existing K1/K2 reference points. We are buying the
+  attribution, not a particular direction.
+- **Failure/warning:** Variant B's internal OOF MCC is contaminated (train-neighbor `Response`
+  leaks across folds, same mechanism as K2) — must be flagged and never used as a ranking metric;
+  only the LB legitimately measures it. If a submission is not reproducible or the firewall is
+  breached, K3 reports "unresolved — rebuild" and draws no attribution.
+
+### §6 — Contamination safeguards
+
+Same quarantine as K2 — no new trees. `src/kaggle/magic_features.py` may gain small additive
+constants (e.g. named column-subset lists) to avoid duplicating the position/label-only filter
+logic across scripts; this is a refactor-for-reuse, not a new feature family, and does not change
+any existing K2 column's computation. New training entry point(s) under `scripts/kaggle/` for the
+two variants; the existing `scripts/kaggle/generate_submission_K2.py` is reused **unchanged** for
+both variants' submissions (it is already generic over `--model-path`/`--test-features`/`--output`
+and reads the feature list from the payload, not a hardcoded column list) — no new submission script
+required. Code valve (`grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+`src/kaggle/` and `scripts/kaggle/`) must remain empty before merge. No Track 1/3 file touched. No
+`decisions.md` entry. No leaderboard number outside `kaggle_decisions.md`.
+
+### §7 — Git strategy
+
+- **Branch:** `kaggle/K3-adjacency-attribution`, cut from `kaggle-main` **after** this KDR-004 is
+  ratified and committed onto `kaggle-main` (K1/K2 precedent).
+- **Commits:** `K3 exp:` (variant training code + reuse), `K3 eval:` (submissions + validation),
+  `K3 docs:` (Evidence/Outcome/Decision, once the LB scores are in).
+- **Merge:** `kaggle/K3-adjacency-attribution` → **`kaggle-main` only**, `--no-ff`. Never `main`.
+- **Tag:** `K3-result` (annotated), placed **only after** both LB scores are recorded (K1/K2
+  precedent — no tag before outcome evidence exists).
+
+### §8 — Documentation updates required after K3 evidence lands
+
+- `docs/research/kaggle_decisions.md` — fill KDR-004 Evidence/Outcome/Decision + hypothesis
+  classification + ledger update (K3 → Complete; K4 pending KDR-005).
+- `docs/agent_memory/claude_state.md` — Track 2 state, K3 record, next-step pointer to K4.
+- `docs/research/git_workflow.md` — only if a genuinely new rule emerges (none anticipated: same
+  quarantine, same code valve, same branch/merge/tag pattern as K2).
+- `docs/ml_system_tracks.md` — currently stale since before K1 shipped (still shows 20%/"K1 in
+  progress"); reconcile opportunistically with this KDR's commit, not required for K3 itself.
+- **Not touched:** `decisions.md` (no Production/research decision changes), README, case study,
+  Track 1/3 docs, `CLAUDE.md`.
+
+### §9 — Decision, confidence, next action
+
+- **Decision:** **Authorize K3** = adjacency attribution (Variant A position-only, Variant B
+  label-only), exactly as specified in §4–§7, pending user go-ahead for the two outward LB
+  submissions. This is the highest information-gain-per-effort action on the Track 2 board (reuses
+  committed K2 code and data; no new feature engineering) and gates the design of the next, much
+  more expensive candidate (full per-station timing-cohort reconstruction, proposed as K4/KDR-005).
+- **Confidence:** **High** that this is the correct next experiment given K2's real LB result;
+  **Medium** on which hypothesis wins (0.60/0.30/0.10 prior split) — that is the number K3 buys.
+- **Next action:** On go-ahead, cut `kaggle/K3-adjacency-attribution`, train both variants from the
+  existing `dataset_h_magic_{train,test}.parquet`, generate two submissions via the existing
+  `generate_submission_K2.py`, validate, and (with explicit authorization for the outward
+  submissions) measure both LB scores. Record evidence here, tag `K3-result`, merge to
+  `kaggle-main` only. Design K4 (timing-cohort, KDR-005) informed by K3's verdict.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
@@ -672,4 +803,6 @@ candidate D) in `KDR-004` if pursued.
 | K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **Complete** — PASS (2026-06-28); tag `K1-result`; md5 `e83b769be914976972a209c5ca278602` |
 | KDR-003 | Pre-register K2: quantify the leakage gap via record-adjacency magic features | **Decided — K2 authorized (2026-06-28)** |
 | K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Complete** — public LB 0.31699 / private LB 0.32702 (~49% of gap recovered); `H_adjacency_dominant` confirmed; tag `K2-result` (2026-07-02) |
-| K3 | (to be designed) Leakage-family attribution of any residual gap (candidate D) | Pending — pre-register in `KDR-004`; residual ~51% of the gap unexplained by adjacency alone |
+| KDR-004 | Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage | **Decided — K3 authorized (2026-07-02)** |
+| K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Authorized, not started** — branch `kaggle/K3-adjacency-attribution` (to cut from `kaggle-main`) |
+| K4 | (to be designed) Timing-cohort reconstruction from full per-station date matrices | Pending — pre-register in `KDR-005`, design informed by K3's verdict |
