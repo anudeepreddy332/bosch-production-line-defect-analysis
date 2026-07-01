@@ -888,6 +888,178 @@ retired) in `KDR-005`.
 
 ---
 
+## KDR-005 — Pre-register K4: label-free timing-cohort geometry
+
+- **Date:** 2026-07-02
+- **Decision type:** Experiment pre-registration (post-K3 governance/design review). **Authorizes
+  K4 only.** No `K5+` is authorized. A design entry, no code/branch/model in this commit.
+
+### §1 — Trigger
+
+K3 resolved KDR-004's attribution question completely: K2's entire real LB gain is record-proximity
+(position-only public 0.31791/private 0.33161, exceeding K2's full-magic score); neighbor-label
+lookup contributes nothing out-of-sample and is actively harmful in isolation (label-only
+0.10065/0.10530, below K1). This retires neighbor-label leakage as a research direction and, more
+importantly, establishes that **label-free record-order OOF is trustworthy** (K3-A's honest OOF
+0.31761 matched its real LB to within 0.0003 public / exceeded it private) — the calibration doubt
+raised at K2 is resolved. K4 asks the next question inside the still-open record-order family:
+**does exact-timestamp batch/cohort geometry (rows sharing the same fine-grained `start_time`/
+`max_date` value) add signal over what K3-A's 34 features already capture?**
+
+### §2 — Imported priors (K1, K2, K3, RP1/RP2 — no re-derivation)
+
+- **K1:** honest baseline, public 0.14389 / private 0.16160.
+- **K2:** full magic (24 cols), public 0.31699 / private 0.32702.
+- **K3-A (position-only, 34 feats):** public **0.31791** / private **0.33161** — the current best
+  label-free reference point K4 must beat to justify its own existence.
+- **K3-B (label-only):** public 0.10065 / private 0.10530 — confirms neighbor-label is dead; not
+  imported further into K4's design.
+- **dataset_h already contains coarse cohort-density proxies** (`records_last_1hr`,
+  `records_last_24hr`, `density_ratio`, all rolling-window counts around `start_time`) — these are
+  part of K3-A's 34-feature baseline already. K4 is therefore **not** testing "does cohort density
+  matter at all" (that's partially already in the baseline) — it is testing whether **finer-grained,
+  exact-timestamp batch geometry** (cohort size/position at the ~record level, not the hour/day
+  rolling-window level) adds anything on top.
+- **RP1/RP2 (DR-008):** honest representation/model space is exhausted — reinforces that any K4 gain
+  must come from the leakage mechanism itself (record-order/batching), not from new sensor features.
+- **Repository fact (verified by direct inspection, this session's earlier audit):**
+  `start_time` (=`date_cols.min(axis=1)`) and an implicit `max_date` (=`start_time + duration`) are
+  already computed in `scripts/build_dataset_baseline.py::_build_date_core` and present in
+  `dataset_h_magic_{train,test}.parquet`. **K4 needs zero date-matrix reread** — no per-station
+  `train_date.parquet` access at all.
+
+### §3 — Hypotheses (entering priors, fixed before results)
+
+- **H_cohort_large (0.40):** exact-timestamp cohort features add a large, clearly-out-of-baseline
+  gain — OOF rises materially above 0.31761 (e.g. ≥0.335) and a confirming LB submission matches
+  within the K3-A calibration tolerance (±0.005).
+- **H_cohort_modest (0.45):** cohort features add a small, real gain (OOF ~0.320–0.335) — consistent
+  with most of the batch-geometry signal already being captured by dataset_h's rolling-window
+  density features, with only a modest residual left for exact-timestamp granularity.
+- **H_cohort_null (0.15):** cohort features add ~nothing (OOF ≤ 0.318, within noise of K3-A) —
+  the coarse density proxies already exhausted this sub-family; record-order leakage is now fully
+  attributed between K2/K3/K4 with nothing left in this direction.
+- **(Revised from the original K4 planning draft):** priors shifted toward H_cohort_modest/null
+  relative to the initial 0.5/0.35/0.15-style split floated before K3 landed, because K3's real
+  numbers confirm dataset_h's existing rolling-window features already sit inside the same
+  record-order-proximity family K4 would extend — the marginal question is narrower than first
+  framed, not "does cohort help" but "does *exact* timestamp cohort geometry help beyond *rolling*
+  timestamp density."
+
+### §4 — Feature/model specification (concrete, no ambiguity)
+
+**No date-matrix reread. No `train_resp_*`. No path-structure / station-visited features** (deleted
+from this design — see §4a for why). Built entirely from the two timestamp columns already present
+in `dataset_h_magic_{train,test}.parquet`: `start_time` (min date) and `max_date` (derived as
+`start_time + duration`, both already columns in that dataset).
+
+New quarantine module `src/kaggle/cohort_features.py`, mirroring `magic_features.py`'s conventions
+(deterministic total order, `mergesort`, `+inf` NaN sentinel, `Id` tie-break, computed over the
+train+test concatenation exactly like K2/K3's magic features):
+
+`COHORT_FEATURE_COLS` (18 columns), computed via `compute_cohort_features(train_df, test_df)`:
+
+1. **Min-date (entry) cohort — group by `start_time` rounded to a fixed precision (0.01, matching
+   the dataset's native timestamp granularity):**
+   - `mindate_cohort_size` — count of rows (train+test) sharing this rounded `start_time`.
+   - `mindate_cohort_pos` — rank of this row's `Id` within its cohort (ascending `Id`).
+   - `mindate_cohort_pos_frac` — `mindate_cohort_pos / mindate_cohort_size`.
+   - `mindate_is_singleton` — `1` if `mindate_cohort_size == 1`.
+2. **Max-date (exit) cohort — same 4 features, grouped by rounded `max_date`:**
+   `maxdate_cohort_size`, `maxdate_cohort_pos`, `maxdate_cohort_pos_frac`, `maxdate_is_singleton`.
+3. **Max-date order adjacency** (a *new* sort order K2/K3 never built — those covered `Id` and
+   `start_time` orders only): sort by `(max_date, Id)` →
+   `maxdate_prev_id_diff`, `maxdate_next_id_diff`, `maxdate_prev_time_diff`, `maxdate_next_time_diff`,
+   `maxdate_same_prev`, `maxdate_same_next`.
+4. **Extended k-lag in `(min_date, Id)` order** (K2/K3's `adj_time_id` order only went to k=1;
+   this extends the same order to k=2/k=3, testing whether cohort *extent* beyond the immediate
+   neighbor carries signal): `mindate_id_diff_k2`, `mindate_id_diff_k3`, `mindate_time_diff_k2`,
+   `mindate_time_diff_k3`.
+
+**Feature set for K4's single variant:** `DATASET_H_FEATURE_COLS` (16) + `POSITION_ONLY_MAGIC_COLS`
+(18, K3-A's exact winning feature set) + `COHORT_FEATURE_COLS` (18) = **52 features total**. K4 is
+**one variant, not an A/B split** — the question is a single marginal-gain test against the K3-A
+baseline, not an attribution split like K3.
+
+**Hyperparameters:** identical LightGBM config as K3/K2/dataset_h (`train_lightgbm_oof` reused
+unchanged) — no hyperparameter change is logged, so none is made.
+
+**Threshold:** OOF-derived `best_threshold` as usual (honest, per K3's calibration finding).
+
+#### §4a — What is explicitly NOT built, and why (deletions from the earlier planning draft)
+
+- **Per-station date-matrix reconstruction / path-structure features** (`n_stations_visited`,
+  first/last station visited, per-station co-occurrence): **deleted from K4 entirely.** These are
+  computable from a part's *own* record (not leakage), and RP1/RP2 (frozen, DR-008) already found
+  routing/representation features add no durable signal in the honest space. Including them would
+  (a) require the one genuinely expensive step (rereading `train_date.parquet`'s 1157 columns),
+  (b) blur K4's identity as a pure label-free record-order-cohort experiment, and (c) risk
+  re-deriving a settled honest-space negative — a charter violation (DR-008 already closed this).
+  Per-station *co-occurrence* (the genuinely leaky date-matrix signal) stays deferred to a
+  **conditional K5**, run only if K4 leaves a large unexplained residual gap.
+- **No neighbor-label / `train_resp_*` features** — permanently retired by K3's verdict.
+- **No new sort order beyond max-date** — `adj_id`/`adj_time`/`adj_time_id` (K2/K3) plus the new
+  max-date order (this KDR) exhaust the timestamp/Id total-order space available from the two
+  columns already in hand; no fourth order is motivated.
+
+### §5 — Success / pass / failure criteria
+
+- **Process (BINDING):** K4 fully recorded — this pre-registration, `kaggle/K4-timing-cohort` off
+  `kaggle-main`, `K4-result` tag, results merged to `kaggle-main` **only**, submission reproducible
+  from committed quarantine code + documented commands. Firewall (§6) checks pass.
+- **Outcome (SOFT, non-binding):** a confident classification into exactly one of §3's hypotheses,
+  using the honest OOF (primary, per K3's calibration finding) plus **one** confirming LB submission.
+  Unlike K3, K4 does not need a second contaminated-variant submission — there is no label-touching
+  variant to test.
+- **Failure/warning:** if OOF is not reproducible run-to-run, or firewall is breached, or the
+  additive merge onto `dataset_h_magic_{train,test}.parquet` changes row counts, K4 reports
+  "unresolved — rebuild" and draws no attribution.
+
+### §6 — Contamination safeguards
+
+Same quarantine as K2/K3 — no new trees. New module `src/kaggle/cohort_features.py` (label-free by
+construction — no `Response` column is read or referenced anywhere in it, unlike
+`magic_features.py`'s `train_resp_*` block). New build script `scripts/kaggle/build_cohort_dataset.py`.
+Existing `scripts/kaggle/generate_submission_K2.py` reused **unchanged**. Code valve
+(`grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both `src/kaggle/` and
+`scripts/kaggle/`) must remain empty before merge. No Track 1/3 file touched. No `decisions.md`
+entry. No leaderboard number outside `kaggle_decisions.md`.
+
+### §7 — Git strategy
+
+- **Branch:** `kaggle/K4-timing-cohort`, cut from `kaggle-main` **after** this KDR-005 is ratified
+  and committed onto `kaggle-main` (K1/K2/K3 precedent).
+- **Commits:** `K4 exp:` (cohort features + dataset build + training code), `K4 eval:` (submission +
+  validation), `K4 docs:` (Evidence/Outcome/Decision, once the LB score is in).
+- **Merge:** `kaggle/K4-timing-cohort` → **`kaggle-main` only**, `--no-ff`. Never `main`.
+- **Tag:** `K4-result` (annotated), placed **only after** the LB score is recorded (K1/K2/K3
+  precedent — no tag before outcome evidence exists).
+
+### §8 — Documentation updates required after K4 evidence lands
+
+- `docs/research/kaggle_decisions.md` — fill KDR-005 Evidence/Outcome/Decision + hypothesis
+  classification + ledger update (K4 → Complete; K5 conditional-only, gated on residual-gap size).
+- `docs/agent_memory/claude_state.md` — Track 2 state, K4 record, next-step pointer.
+- `docs/ml_system_tracks.md` — update Track 2 progress/state line alongside the KDR-005 commit.
+- **Not touched:** `decisions.md`, README, case study, Track 1/3 docs, `CLAUDE.md`.
+
+### §9 — Decision, confidence, next action
+
+- **Decision:** **Authorize K4** = label-free timing-cohort geometry (single variant, 52 features:
+  16 `dataset_h` + 18 `POSITION_ONLY_MAGIC_COLS` + 18 new `COHORT_FEATURE_COLS`), exactly as specified
+  in §4–§7, pending user go-ahead for the one outward LB submission. No per-station date-matrix
+  reread, no path-structure features, no neighbor-label features.
+- **Confidence:** **High** that this is the correct, narrowly-scoped next experiment given K3's
+  verdict; **Medium-low** on which hypothesis wins — priors shifted toward modest/null after
+  recognizing dataset_h's existing rolling-window density features already partially cover this
+  ground (see §3).
+- **Next action:** On go-ahead, cut `kaggle/K4-timing-cohort`, build cohort features, train, validate,
+  and (with explicit authorization) measure the one confirming LB score. Record evidence here, tag
+  `K4-result`, merge to `kaggle-main` only. Decide on conditional K5 (per-station co-occurrence)
+  based on the residual gap.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
@@ -899,5 +1071,5 @@ retired) in `KDR-005`.
 | K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Complete** — public LB 0.31699 / private LB 0.32702 (~49% of gap recovered); `H_adjacency_dominant` confirmed; tag `K2-result` (2026-07-02) |
 | KDR-004 | Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage | **Decided — K3 authorized (2026-07-02)** |
 | K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Complete** — position-only public 0.31791/private 0.33161 (exceeds K2); label-only public 0.10065/private 0.10530 (below K1); `H_position_dominant` confirmed, `H_label_contributes`/`H_position_optimistic` rejected; tag `K3-result` (2026-07-02) |
-| KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | Pending — see KDR-005 below |
-| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | Pending — pre-register in `KDR-005` before branching |
+| KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
+| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Authorized, not started** — branch `kaggle/K4-timing-cohort` (to cut from `kaggle-main`) |
