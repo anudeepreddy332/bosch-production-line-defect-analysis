@@ -543,6 +543,70 @@ K2 is the experiment KDR-001's firewall was built for. All of the following are 
   measure the LB. Record evidence here, tag `K2-result`, merge to `kaggle-main` only. Then design
   K3 (leakage-family attribution, candidate D) in `KDR-004` if a residual gap remains.
 
+### K2 Implementation status (2026-07-01) — build/train/submission complete, LB submission NOT yet performed
+
+**This is a status update only.** The formal Evidence / Outcome / Decision block for K2 remains
+**pending** until the Kaggle LB score is measured (an outward action requiring separate explicit
+user authorization, per §5 and KDR-002 precedent) — that is the definitive gap quantifier this
+experiment exists to produce. Everything below is process record, not the K2 verdict.
+
+- **Branch:** `kaggle/K2-magic-leakage-probe`, cut from `kaggle-main` @ `c1aa2ba` (KDR-003 ratified
+  and committed onto `kaggle-main` first, as required by §7).
+- **Quarantine created** exactly as pre-registered (§6.1): `src/kaggle/magic_features.py`,
+  `scripts/kaggle/{build_magic_dataset,train_magic_model,generate_submission_K2}.py`, each with
+  `__init__.py`. `outputs/kaggle/` added to `.gitignore` **before** any artifact was generated.
+- **Feature spec implemented (§5 item 1–2):** 3 deterministic total-order sorts —
+  `adj_id` (by `Id`, already unique), `adj_time` (by `start_time`, ties broken by stable sort over
+  fixed train-then-test-by-`Id` concatenation order), `adj_time_id` (explicit compound key
+  `(start_time, Id)`, a different tie-break than `adj_time`). Each order contributes 8 columns
+  (`id_prev_diff`, `id_next_diff`, `time_prev_diff`, `time_next_diff`, `same_prev`, `same_next`,
+  `train_resp_prev`, `train_resp_next`) → 24 `MAGIC_FEATURE_COLS` total. `train_resp_*` is the
+  nearest strictly-prior/-following **train** record's `Response` in that order (own label always
+  excluded). NaN `start_time` (~0.05% of rows) placed deterministically last via a `+inf` sort key.
+  **Item 3 (optional duplicate/concat aggregates) omitted** — not required by §5, deferred rather
+  than rushed.
+- **Datasets built** (`scripts/kaggle/build_magic_dataset.py`, gitignored parquet):
+  `data/features/dataset_h_magic_train.parquet` (1,183,747 rows × 42 cols: `Id`, `Response`, 16
+  clean `DATASET_H_FEATURE_COLS`, 24 magic cols) and `dataset_h_magic_test.parquet` (1,183,748 rows
+  × 41 cols, same minus `Response`). Row counts match `dataset_h`/`test_dataset_h` exactly (additive
+  merge, no row loss).
+- **Model trained** (`scripts/kaggle/train_magic_model.py`, reusing `train_lightgbm_oof` +
+  `build_model_payload` from `src.training.modeling` unchanged — same LightGBM hyperparameters as
+  `dataset_h`, no change logged): `outputs/kaggle/models/k2_magic_model.pkl`, 5 fold models,
+  `data_fingerprint=3dc7fb742ce24ecf`, `threshold=0.98`.
+  - **CONTAMINATED `oof_mcc=0.37530`** (full 40-feature set, includes `train_resp_*`) — per §5
+    warning, this is **not a valid ranking metric** (label leaks across CV folds via the
+    train-neighbor lookup) and must never be compared to `dataset_h`'s honest `oof_mcc=0.15337`.
+  - **Ablation (§5 required evidence, "if feasible" — performed):** retrained with the 18
+    position-only magic columns (`train_resp_*` excluded). These carry **no label information**, so
+    this OOF MCC **is a valid, uncontaminated internal comparison**:
+    `oof_mcc=0.31761` vs. `dataset_h` honest `oof_mcc=0.15337` — position/adjacency-delta features
+    *alone* (no explicit neighbor-label lookup) already recover roughly half the movement toward the
+    full-magic contaminated figure. This is genuine internal evidence that fine-grained record
+    position carries information beyond `dataset_h`'s existing chunk/order aggregates, independent
+    of the label-leak mechanism. The full gap to the ~0.50 public-LB ceiling is only measurable via
+    the LB (label-leak contribution + any remaining LB-only effects, e.g. test-set-only ordering).
+- **Submission generated** (`scripts/kaggle/generate_submission_K2.py`, importing — never editing —
+  `scripts/generate_submission.py`'s `load_validated_payload` / `load_test_features` /
+  `predict_proba_ensemble` / `check_against_sample_submission`): `outputs/kaggle/submission_K2.csv`.
+
+  | Field | Value |
+  |---|---|
+  | Row count | 1,183,748 (matches `sample_submission` row count and full `Id` set) |
+  | Positive predictions | 1,324 |
+  | Threshold used | 0.98 (payload default; derived from the contaminated OOF — flagged, not re-tuned) |
+  | md5 | `f63e286cea15ea3394cd9da2f14b511f` |
+  | Determinism | Submission-generation step verified byte-identical across two independent runs against the same frozen `k2_magic_model.pkl` (same md5) — same bar as K1's determinism check. Full pipeline retrain-determinism not separately verified (LightGBM multi-threaded histogram building is not guaranteed bit-identical across reruns even with a fixed seed); this does not affect the reported artifact, which is generated from one fixed, saved model payload. |
+
+- **Firewall verified:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+  `src/kaggle/` and `scripts/kaggle/` → **empty**. No Track 1 or Track 3 `src`/`scripts` file
+  modified (diff against `kaggle-main` base `c1aa2ba` touches only `.gitignore` plus the two new
+  quarantine trees). `docs/research/git_workflow.md` §code-valve updated to exclude both quarantine
+  trees, as pre-registered in §6.2.
+- **Not yet done (explicitly deferred per this task's scope):** Kaggle LB submission, `K2-result`
+  tag, merge to `kaggle-main`, and the formal Evidence/Outcome/Decision + ledger update below. These
+  require a separate explicit user go-ahead for the outward submission step.
+
 ---
 
 ## Pending Kaggle experiment ledger
