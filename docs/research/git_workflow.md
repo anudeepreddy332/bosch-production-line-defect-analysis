@@ -155,7 +155,9 @@ A change may merge to `main` only if **all** are true. Any "no" → it is Kaggle
    (the `LEAKY_FEATURE_PREFIXES` family). 
 2. **Metric provenance:** every reported MCC/threshold was computed on labeled OOF/CV data with the
    chunk-aware group-safe harness — never on unlabeled production data, never with a leaky feature.
-3. **No import of `src/kaggle/`** anywhere in the changed code outside `src/kaggle/` itself.
+3. **No import of `src/kaggle/` or `scripts/kaggle/`** anywhere in the changed code outside those two
+   quarantine trees themselves (refined at K2, KDR-003 §6.2, once `scripts/kaggle/` came into
+   existence as a second quarantine tree alongside `src/kaggle/`).
 4. **No leaderboard number** appears in `decisions.md` or in any `DR`/`E` rationale.
 5. **Log routing:** the change's scientific record lands in `decisions.md` (`DR`/`E`), not
    `kaggle_decisions.md`.
@@ -171,7 +173,7 @@ Production's protocol is strictly stronger than Kaggle's, so value flows asymmet
 | What crosses | Prod → Kaggle | Kaggle → Prod |
 |---|---|---|
 | Ideas / hypotheses | free | free, but only as a **fresh pre-registered `DR`/`E`** (zero borrowed priors) |
-| Code (import) | free | forbidden (`src/kaggle/` is import-inward-only) |
+| Code (import) | free | forbidden (`src/kaggle/` and `scripts/kaggle/` are import-inward-only) |
 | Evidence / metrics | free | **forbidden** (never in `decisions.md`, never gates a `DR`/`E`) |
 | Features | free | only via the **re-derivation gateway** |
 
@@ -182,5 +184,9 @@ only the reproduced Production MCC → merge after the contamination checklist. 
 cannot survive this gateway is, by definition, not a Production result.
 
 **Code valve enforcement:** before any merge to `main`,
-`grep -r "import.*kaggle" src/ scripts/ --include=*.py` (excluding `src/kaggle/`) must be empty.
-Wire into CI when `K1` opens.
+`grep -rn --include="*.py" "import.*kaggle" src/ scripts/` **excluding both `src/kaggle/` AND
+`scripts/kaggle/`** must be empty. (Refined at K2, KDR-003 §6.2: the original exclusion covered
+only `src/kaggle/`; once `scripts/kaggle/` exists, its own internal `from src.kaggle...` imports
+could otherwise register as false positives for a different exclusion pattern than the one this
+repo actually uses — excluding both trees keeps the valve correct regardless of import style.) Wire
+into CI when `K1` opens.

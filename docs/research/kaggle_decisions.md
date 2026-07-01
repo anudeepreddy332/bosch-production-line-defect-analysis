@@ -543,6 +543,124 @@ K2 is the experiment KDR-001's firewall was built for. All of the following are 
   measure the LB. Record evidence here, tag `K2-result`, merge to `kaggle-main` only. Then design
   K3 (leakage-family attribution, candidate D) in `KDR-004` if a residual gap remains.
 
+### K2 Implementation status (2026-07-01) — build/train/submission complete; LB measured 2026-07-02
+
+Process record of the build/train/submission steps (see K2 Evidence — Kaggle LB below for the
+measured LB scores and the formal Outcome/Decision).
+
+- **Branch:** `kaggle/K2-magic-leakage-probe`, cut from `kaggle-main` @ `c1aa2ba` (KDR-003 ratified
+  and committed onto `kaggle-main` first, as required by §7).
+- **Quarantine created** exactly as pre-registered (§6.1): `src/kaggle/magic_features.py`,
+  `scripts/kaggle/{build_magic_dataset,train_magic_model,generate_submission_K2}.py`, each with
+  `__init__.py`. `outputs/kaggle/` added to `.gitignore` **before** any artifact was generated.
+- **Feature spec implemented (§5 item 1–2):** 3 deterministic total-order sorts —
+  `adj_id` (by `Id`, already unique), `adj_time` (by `start_time`, ties broken by stable sort over
+  fixed train-then-test-by-`Id` concatenation order), `adj_time_id` (explicit compound key
+  `(start_time, Id)`, a different tie-break than `adj_time`). Each order contributes 8 columns
+  (`id_prev_diff`, `id_next_diff`, `time_prev_diff`, `time_next_diff`, `same_prev`, `same_next`,
+  `train_resp_prev`, `train_resp_next`) → 24 `MAGIC_FEATURE_COLS` total. `train_resp_*` is the
+  nearest strictly-prior/-following **train** record's `Response` in that order (own label always
+  excluded). NaN `start_time` (~0.05% of rows) placed deterministically last via a `+inf` sort key.
+  **Item 3 (optional duplicate/concat aggregates) omitted** — not required by §5, deferred rather
+  than rushed.
+- **Datasets built** (`scripts/kaggle/build_magic_dataset.py`, gitignored parquet):
+  `data/features/dataset_h_magic_train.parquet` (1,183,747 rows × 42 cols: `Id`, `Response`, 16
+  clean `DATASET_H_FEATURE_COLS`, 24 magic cols) and `dataset_h_magic_test.parquet` (1,183,748 rows
+  × 41 cols, same minus `Response`). Row counts match `dataset_h`/`test_dataset_h` exactly (additive
+  merge, no row loss).
+- **Model trained** (`scripts/kaggle/train_magic_model.py`, reusing `train_lightgbm_oof` +
+  `build_model_payload` from `src.training.modeling` unchanged — same LightGBM hyperparameters as
+  `dataset_h`, no change logged): `outputs/kaggle/models/k2_magic_model.pkl`, 5 fold models,
+  `data_fingerprint=3dc7fb742ce24ecf`, `threshold=0.98`.
+  - **CONTAMINATED `oof_mcc=0.37530`** (full 40-feature set, includes `train_resp_*`) — per §5
+    warning, this is **not a valid ranking metric** (label leaks across CV folds via the
+    train-neighbor lookup) and must never be compared to `dataset_h`'s honest `oof_mcc=0.15337`.
+  - **Ablation (§5 required evidence, "if feasible" — performed):** retrained with the 18
+    position-only magic columns (`train_resp_*` excluded). These carry **no label information**, so
+    this OOF MCC **is a valid, uncontaminated internal comparison**:
+    `oof_mcc=0.31761` vs. `dataset_h` honest `oof_mcc=0.15337` — position/adjacency-delta features
+    *alone* (no explicit neighbor-label lookup) already recover roughly half the movement toward the
+    full-magic contaminated figure. This is genuine internal evidence that fine-grained record
+    position carries information beyond `dataset_h`'s existing chunk/order aggregates, independent
+    of the label-leak mechanism. The full gap to the ~0.50 public-LB ceiling is only measurable via
+    the LB (label-leak contribution + any remaining LB-only effects, e.g. test-set-only ordering).
+- **Submission generated** (`scripts/kaggle/generate_submission_K2.py`, importing — never editing —
+  `scripts/generate_submission.py`'s `load_validated_payload` / `load_test_features` /
+  `predict_proba_ensemble` / `check_against_sample_submission`): `outputs/kaggle/submission_K2.csv`.
+
+  | Field | Value |
+  |---|---|
+  | Row count | 1,183,748 (matches `sample_submission` row count and full `Id` set) |
+  | Positive predictions | 1,324 |
+  | Threshold used | 0.98 (payload default; derived from the contaminated OOF — flagged, not re-tuned) |
+  | md5 | `f63e286cea15ea3394cd9da2f14b511f` |
+  | Determinism | Submission-generation step verified byte-identical across two independent runs against the same frozen `k2_magic_model.pkl` (same md5) — same bar as K1's determinism check. Full pipeline retrain-determinism not separately verified (LightGBM multi-threaded histogram building is not guaranteed bit-identical across reruns even with a fixed seed); this does not affect the reported artifact, which is generated from one fixed, saved model payload. |
+
+- **Firewall verified:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+  `src/kaggle/` and `scripts/kaggle/` → **empty**. No Track 1 or Track 3 `src`/`scripts` file
+  modified (diff against `kaggle-main` base `c1aa2ba` touches only `.gitignore` plus the two new
+  quarantine trees). `docs/research/git_workflow.md` §code-valve updated to exclude both quarantine
+  trees, as pre-registered in §6.2.
+### K2 Evidence — Kaggle LB (submitted 2026-07-02, manual submission by user)
+
+`outputs/kaggle/submission_K2.csv` (md5 `f63e286cea15ea3394cd9da2f14b511f`, verified unchanged
+immediately before submission) was submitted to the `bosch-production-line-performance` Kaggle
+competition via the website (the `kaggle` CLI's newer releases all depend on a `kagglesdk` package
+whose last several published PyPI wheels, checked 0.1.28–0.1.32, are missing their own
+`competitions/legacy` submodule — an upstream packaging defect, not a local misconfiguration; the
+older CLI generations that don't need `kagglesdk` don't support this Kaggle account's `KGAT_`-format
+API token. User submitted manually and reported the scores below).
+
+| Metric | K1 (honest baseline) | K2 (record-adjacency magic) | Δ (K2 − K1) |
+|---|---|---|---|
+| Public LB | 0.14389 | **0.31699** | **+0.17310** |
+| Private LB | 0.16160 | **0.32702** | **+0.16542** |
+
+**Gap recovered:** using the documented public-LB leakage ceiling (~0.50, DR-001/KDR-003 §1) as the
+top of the honest→leaky gap, K2 recovers `(0.31699 − 0.14389) / (0.50 − 0.14389) ≈ 48.6%` of the
+total documented gap on the public split. Private LB moves in the same direction and by a similar
+magnitude (+0.165), consistent with K1's own public/private relationship (private slightly higher
+than public in both K1 and K2) — no sign of public-LB overfitting from the magic features.
+
+**Internal-vs-external calibration note:** the held-out public LB (0.317) sits close to this
+session's **uncontaminated** position-only ablation OOF MCC (0.31761, no `train_resp_*`), not the
+**contaminated** full-magic OOF MCC (0.37530, includes the explicit train-neighbor-`Response`
+lookup). One data point is not a general law, but it suggests the internal CV's label-leak
+component may over-estimate what the explicit `train_resp_*` lookup is worth out-of-sample relative
+to the pure position/ordering signal — a candidate line item for K3's attribution work, not a
+conclusion drawn here.
+
+### K2 Outcome
+
+**Measurement obtained, as a soft/non-binding buy per §5.** K2 produces a decisive, large movement
+(+0.173 public, +0.165 private — more than double K1's honest score) that lands squarely inside the
+pre-registered "plausibly toward 0.30–0.50" range for `H_adjacency_dominant`, while leaving roughly
+half of the total documented leakage ceiling gap (~51%) still unexplained by the adjacency family
+alone.
+
+### K2 Hypothesis classification (against §5 priors)
+
+| Hypothesis | Prior | Result | Verdict |
+|---|---|---|---|
+| **H_adjacency_dominant** | 0.75 | Public LB 0.317, recovering ~49% of the total gap — a large, decisive rise, within the pre-registered 0.30–0.50 band | **CONFIRMED** |
+| H_adjacency_minor | 0.20 | Would have predicted only modest movement; the actual +0.173 public / +0.165 private movement is far larger than "modest" | **Rejected** |
+| H_no_gap | 0.05 | Would have predicted little movement; directly falsified by the observed gap | **Rejected** |
+
+Record-adjacency leakage is confirmed as a **major** driver of the honest→leaky LB gap — this
+eliminates the "honest work alone can close the gap" hypothesis class, exactly as §3/§4 intended.
+It does **not**, however, fully close the gap to the ~0.50 ceiling on its own: roughly half the
+documented gap remains unattributed. This residual is the natural target for K3 (candidate D — other
+leakage sub-families in isolation, deferred at §3/§4), not evidence against K2's own hypothesis.
+
+### K2 Decision
+
+**Complete.** `outputs/kaggle/submission_K2.csv` is the authoritative K2 artifact (gitignored, not
+committed; reproducible on demand from committed quarantine code + pre-registered commands). Tag
+`K2-result` placed at the tip of `kaggle/K2-magic-leakage-probe`, merged to `kaggle-main` only. The
+Track 2 leakage-gap quantification KDR-001 set out to obtain is delivered: record-adjacency magic
+recovers ~49% of the honest→leaky gap. Design K3 (leakage-family attribution of the residual gap,
+candidate D) in `KDR-004` if pursued.
+
 ---
 
 ## Pending Kaggle experiment ledger
@@ -553,5 +671,5 @@ K2 is the experiment KDR-001's firewall was built for. All of the following are 
 | KDR-002 | Pre-register K1: baseline reproduction from frozen production candidate | **Decided — K1 authorized (2026-06-28)** |
 | K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **Complete** — PASS (2026-06-28); tag `K1-result`; md5 `e83b769be914976972a209c5ca278602` |
 | KDR-003 | Pre-register K2: quantify the leakage gap via record-adjacency magic features | **Decided — K2 authorized (2026-06-28)** |
-| K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Authorized, not started** — branch `kaggle/K2-magic-leakage-probe` (to cut from `kaggle-main`) |
-| K3 | (to be designed) Leakage-family attribution of any residual gap (candidate D) | Pending — pre-register in `KDR-004` after K2 |
+| K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Complete** — public LB 0.31699 / private LB 0.32702 (~49% of gap recovered); `H_adjacency_dominant` confirmed; tag `K2-result` (2026-07-02) |
+| K3 | (to be designed) Leakage-family attribution of any residual gap (candidate D) | Pending — pre-register in `KDR-004`; residual ~51% of the gap unexplained by adjacency alone |

@@ -44,6 +44,9 @@ data/features/*.json
 outputs/*.csv
 outputs/*.parquet
 
+# Track 2 (Kaggle quarantine) artifacts -- leaky by construction, never committed (KDR-003 SS6.6)
+outputs/kaggle/
+
 # Monitoring artifacts
 outputs/**/daily_drift_report.json
 outputs/**/reference.parquet
