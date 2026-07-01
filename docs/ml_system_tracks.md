@@ -5,10 +5,10 @@
 | Track | Description | Progress | State |
 |-------|-------------|----------|-------|
 | Track 1 | Offline Research | 100% | Frozen (DR-015, branch `research/rp2-temporal-robustness` merged) |
-| Track 2 | Kaggle | 15% | **Open** (KDR-001, 2026-06-28; branch `kaggle-main` @ `13ab858`). `dataset_h` submission path verified; no `K` experiment run yet |
+| Track 2 | Kaggle | 20% | **Open** (KDR-001/KDR-002, 2026-06-28; `kaggle-main` @ `b058e58`). K1 pre-registered; branch `kaggle/K1-baseline-reproduction` created |
 | Track 3 | Production | 100% | Frozen (tag: `track3-frozen`, commit: `f743da3`) |
 
-**Current Active Track:** Track 2 (Kaggle) — open on `kaggle-main`. Governance: `docs/research/kaggle_decisions.md` (`KDR-001`). Next: pre-register `K1` in `KDR-002`.
+**Current Active Track:** Track 2 (Kaggle) — K1 in progress on `kaggle/K1-baseline-reproduction`. Governance: `docs/research/kaggle_decisions.md` (`KDR-002`). Next: run K1 baseline reproduction, tag `K1-result`, then design K2 in `KDR-003`.
 
 ---
 
@@ -192,7 +192,7 @@ existing Evidently HTML/JSON into that new view. Only (3) is done; (1), (2), (4)
 | Track / View | Target | Current state |
 |---|---|---|
 | Track 1: Offline Training + Evaluation | Labeled data in, approved model + metrics out | **Exists**, with the World A/B reproducibility caveats already documented in `docs/reproducible_metrics_report.md` |
-| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Open** (`KDR-001`, 2026-06-28; `kaggle-main` @ `13ab858`). `dataset_h` submission path verified locally (`scripts/generate_submission.py` + `test_dataset_h.parquet` + `models/dataset_h_model.pkl`, 1,183,748 rows — `docs/dataset_h_submission_run.md`). No `K` experiment run yet. |
+| Track 2: Kaggle Submission | Unlabeled Kaggle test in, `submission.csv` out | **Open** (`KDR-001/KDR-002`, 2026-06-28; `kaggle-main` @ `b058e58`). K1 pre-registered and in progress on `kaggle/K1-baseline-reproduction`: reproduce `dataset_h` submission, establish authoritative Track 2 baseline. |
 | Track 3: Production Inference Simulation | Unlabeled simulated batches in, label-free predictions/drift out | **Frozen** (tag: `track3-frozen`, commit: `f743da3`). 5 batches scored (50,000 rows). All DoD items met and validated (`validate_system.py` → `overall_pass: True`). |
 | Dashboard View A: Production Monitoring | Label-free batch/drift/data-quality view | **Complete** in `apps/streamlit_dashboard/app.py`'s "Production Monitoring (Track 3)" page. Renders predictions/risk scores (label-free, `Response`-absent verified) AND Evidently drift section (score, detected flag, drifted-column count, drift share, timestamp). Handles missing monitoring output gracefully. |
 | Dashboard View B: Offline Evaluation / Decision Analysis | Labeled OOF data, supervised metrics, threshold/cost tuning | **Exists and is correct on data**, but unlabeled as such and uses misleading naming (`live_df`) |
@@ -279,8 +279,8 @@ Transitions are gated on the Definition of Done above, not on judgment.
    line, the track-terminology glossary, and stray `_blend` artifact provenance/cleanup. **Gate to
    Phase 2:** no known doc/architecture inconsistency outstanding on `main`.
 4. **Phase 2 — Track 2 (Kaggle). ← ACTIVE.** Track opened at `KDR-001` (2026-06-28); `kaggle-main`
-   created from `main` @ `13ab858`. Next: pre-register `K1` in `KDR-002`, then execute the Track 2
-   DoD on `kaggle-main` only; the firewall to `main` stays absolute.
+   at `b058e58` (KDR-001 merged). `K1` pre-registered in `KDR-002`; branch
+   `kaggle/K1-baseline-reproduction` created. Next: run K1 baseline, tag `K1-result`, design K2.
 
 ---
 
