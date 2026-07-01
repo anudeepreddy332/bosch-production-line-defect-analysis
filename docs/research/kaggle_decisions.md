@@ -1058,6 +1058,49 @@ entry. No leaderboard number outside `kaggle_decisions.md`.
   `K4-result`, merge to `kaggle-main` only. Decide on conditional K5 (per-station co-occurrence)
   based on the residual gap.
 
+### K4 Implementation status (2026-07-02) — build/train/submission complete, LB score NOT yet measured
+
+**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
+classification remain **pending** until the Kaggle LB score is measured (an outward action
+requiring separate explicit user authorization, per §5 and K1/K2/K3 precedent).
+
+- **Branch:** `kaggle/K4-timing-cohort`, cut from `kaggle-main` @ `37af416` (KDR-005 ratified and
+  committed first, per §7).
+- **New quarantine module:** `src/kaggle/cohort_features.py` — 18 label-free `COHORT_FEATURE_COLS`
+  (mindate/maxdate cohort size+position, max-date order adjacency, extended k=2/k=3 min-date lag),
+  computed from `start_time`/`duration` already present in `dataset_h_magic_{train,test}.parquet`.
+  **No date-matrix reread, no `Response`/`train_resp_*` reference anywhere in the module** —
+  verified by inspection and by the firewall grep.
+- **New dataset build script:** `scripts/kaggle/build_cohort_dataset.py` additively merges the
+  cohort block onto K3-A's winning feature set (`DATASET_H_FEATURE_COLS` + `POSITION_ONLY_MAGIC_COLS`)
+  → `data/features/dataset_h_cohort_{train,test}.parquet` (row counts asserted unchanged: train
+  1,183,747, test 1,183,748 — both match `dataset_h_magic_{train,test}.parquet` exactly).
+- **New training entry point:** `scripts/kaggle/train_k4_cohort.py` (52 features: 16 `dataset_h` +
+  18 `POSITION_ONLY_MAGIC_COLS` + 18 `COHORT_FEATURE_COLS`), reusing `train_lightgbm_oof`/
+  `build_model_payload` from `src.training.modeling` unchanged (same LightGBM hyperparameters as
+  `dataset_h`/K2/K3, no change logged).
+- **Submission generated via the existing `scripts/kaggle/generate_submission_K2.py`, unmodified**
+  — reused with zero new submission code, same as K3's two variants.
+
+| Field | K4 — cohort |
+|---|---|
+| Feature count | 52 (16 `dataset_h` + 18 position-only magic + 18 cohort) |
+| Model | `outputs/kaggle/models/k4_cohort_model.pkl`, fingerprint `00b4ed30ea58762d` |
+| OOF MCC | **HONEST** `0.32192` (label-free; delta **+0.00431** over K3-A's `0.31761` baseline — falls inside the pre-registered `H_cohort_modest` band, §3) |
+| Threshold | `0.98` (honest, consistent with K3-A's re-tuned threshold) |
+| Feature importance | Cohort columns are meaningfully used, not dead weight: `maxdate_next_id_diff` ranks #4 of 52 by importance; `maxdate_prev_id_diff` #8; `mindate_cohort_pos_frac` #12; `maxdate_cohort_size` #13; `mindate_cohort_size` #14; `maxdate_cohort_pos_frac` #15; `mindate_id_diff_k3`/`k2` #16/#20 |
+| Submission | `outputs/kaggle/submission_K4_cohort.csv` — rows 1,183,748, positives 1,265, md5 `d3e64d19636a834d2d2606e4cbbbe41d` |
+| Id-set vs `sample_submission` | exact match, 0 NaN, schema `[Id, Response]` int64/int64, `Response ∈ {0,1}` |
+| Determinism | 2 independent submission-generation runs against the same frozen model → byte-identical (same md5); feature computation itself independently re-verified deterministic (`compute_cohort_features` called twice, `DataFrame.equals` → `True`) |
+
+- **Firewall verified:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+  `src/kaggle/` and `scripts/kaggle/` → **empty**. Diff against `kaggle-main` base `37af416` adds
+  only `src/kaggle/cohort_features.py`, `scripts/kaggle/build_cohort_dataset.py`,
+  `scripts/kaggle/train_k4_cohort.py` — no existing file modified, no Track 1/3 file touched.
+- **Not yet done:** Kaggle LB submission (requires separate explicit user authorization),
+  `K4-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision + hypothesis
+  classification + ledger update.
+
 ---
 
 ## Pending Kaggle experiment ledger
@@ -1072,4 +1115,4 @@ entry. No leaderboard number outside `kaggle_decisions.md`.
 | KDR-004 | Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage | **Decided — K3 authorized (2026-07-02)** |
 | K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Complete** — position-only public 0.31791/private 0.33161 (exceeds K2); label-only public 0.10065/private 0.10530 (below K1); `H_position_dominant` confirmed, `H_label_contributes`/`H_position_optimistic` rejected; tag `K3-result` (2026-07-02) |
 | KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
-| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Authorized, not started** — branch `kaggle/K4-timing-cohort` (to cut from `kaggle-main`) |
+| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Implementation complete, LB score pending** — branch `kaggle/K4-timing-cohort`; honest OOF MCC 0.32192 (delta +0.00431 over K3-A) |
