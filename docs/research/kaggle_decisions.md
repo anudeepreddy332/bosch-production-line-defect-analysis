@@ -543,12 +543,10 @@ K2 is the experiment KDR-001's firewall was built for. All of the following are 
   measure the LB. Record evidence here, tag `K2-result`, merge to `kaggle-main` only. Then design
   K3 (leakage-family attribution, candidate D) in `KDR-004` if a residual gap remains.
 
-### K2 Implementation status (2026-07-01) — build/train/submission complete, LB submission NOT yet performed
+### K2 Implementation status (2026-07-01) — build/train/submission complete; LB measured 2026-07-02
 
-**This is a status update only.** The formal Evidence / Outcome / Decision block for K2 remains
-**pending** until the Kaggle LB score is measured (an outward action requiring separate explicit
-user authorization, per §5 and KDR-002 precedent) — that is the definitive gap quantifier this
-experiment exists to produce. Everything below is process record, not the K2 verdict.
+Process record of the build/train/submission steps (see K2 Evidence — Kaggle LB below for the
+measured LB scores and the formal Outcome/Decision).
 
 - **Branch:** `kaggle/K2-magic-leakage-probe`, cut from `kaggle-main` @ `c1aa2ba` (KDR-003 ratified
   and committed onto `kaggle-main` first, as required by §7).
@@ -603,9 +601,65 @@ experiment exists to produce. Everything below is process record, not the K2 ver
   modified (diff against `kaggle-main` base `c1aa2ba` touches only `.gitignore` plus the two new
   quarantine trees). `docs/research/git_workflow.md` §code-valve updated to exclude both quarantine
   trees, as pre-registered in §6.2.
-- **Not yet done (explicitly deferred per this task's scope):** Kaggle LB submission, `K2-result`
-  tag, merge to `kaggle-main`, and the formal Evidence/Outcome/Decision + ledger update below. These
-  require a separate explicit user go-ahead for the outward submission step.
+### K2 Evidence — Kaggle LB (submitted 2026-07-02, manual submission by user)
+
+`outputs/kaggle/submission_K2.csv` (md5 `f63e286cea15ea3394cd9da2f14b511f`, verified unchanged
+immediately before submission) was submitted to the `bosch-production-line-performance` Kaggle
+competition via the website (the `kaggle` CLI's newer releases all depend on a `kagglesdk` package
+whose last several published PyPI wheels, checked 0.1.28–0.1.32, are missing their own
+`competitions/legacy` submodule — an upstream packaging defect, not a local misconfiguration; the
+older CLI generations that don't need `kagglesdk` don't support this Kaggle account's `KGAT_`-format
+API token. User submitted manually and reported the scores below).
+
+| Metric | K1 (honest baseline) | K2 (record-adjacency magic) | Δ (K2 − K1) |
+|---|---|---|---|
+| Public LB | 0.14389 | **0.31699** | **+0.17310** |
+| Private LB | 0.16160 | **0.32702** | **+0.16542** |
+
+**Gap recovered:** using the documented public-LB leakage ceiling (~0.50, DR-001/KDR-003 §1) as the
+top of the honest→leaky gap, K2 recovers `(0.31699 − 0.14389) / (0.50 − 0.14389) ≈ 48.6%` of the
+total documented gap on the public split. Private LB moves in the same direction and by a similar
+magnitude (+0.165), consistent with K1's own public/private relationship (private slightly higher
+than public in both K1 and K2) — no sign of public-LB overfitting from the magic features.
+
+**Internal-vs-external calibration note:** the held-out public LB (0.317) sits close to this
+session's **uncontaminated** position-only ablation OOF MCC (0.31761, no `train_resp_*`), not the
+**contaminated** full-magic OOF MCC (0.37530, includes the explicit train-neighbor-`Response`
+lookup). One data point is not a general law, but it suggests the internal CV's label-leak
+component may over-estimate what the explicit `train_resp_*` lookup is worth out-of-sample relative
+to the pure position/ordering signal — a candidate line item for K3's attribution work, not a
+conclusion drawn here.
+
+### K2 Outcome
+
+**Measurement obtained, as a soft/non-binding buy per §5.** K2 produces a decisive, large movement
+(+0.173 public, +0.165 private — more than double K1's honest score) that lands squarely inside the
+pre-registered "plausibly toward 0.30–0.50" range for `H_adjacency_dominant`, while leaving roughly
+half of the total documented leakage ceiling gap (~51%) still unexplained by the adjacency family
+alone.
+
+### K2 Hypothesis classification (against §5 priors)
+
+| Hypothesis | Prior | Result | Verdict |
+|---|---|---|---|
+| **H_adjacency_dominant** | 0.75 | Public LB 0.317, recovering ~49% of the total gap — a large, decisive rise, within the pre-registered 0.30–0.50 band | **CONFIRMED** |
+| H_adjacency_minor | 0.20 | Would have predicted only modest movement; the actual +0.173 public / +0.165 private movement is far larger than "modest" | **Rejected** |
+| H_no_gap | 0.05 | Would have predicted little movement; directly falsified by the observed gap | **Rejected** |
+
+Record-adjacency leakage is confirmed as a **major** driver of the honest→leaky LB gap — this
+eliminates the "honest work alone can close the gap" hypothesis class, exactly as §3/§4 intended.
+It does **not**, however, fully close the gap to the ~0.50 ceiling on its own: roughly half the
+documented gap remains unattributed. This residual is the natural target for K3 (candidate D — other
+leakage sub-families in isolation, deferred at §3/§4), not evidence against K2's own hypothesis.
+
+### K2 Decision
+
+**Complete.** `outputs/kaggle/submission_K2.csv` is the authoritative K2 artifact (gitignored, not
+committed; reproducible on demand from committed quarantine code + pre-registered commands). Tag
+`K2-result` placed at the tip of `kaggle/K2-magic-leakage-probe`, merged to `kaggle-main` only. The
+Track 2 leakage-gap quantification KDR-001 set out to obtain is delivered: record-adjacency magic
+recovers ~49% of the honest→leaky gap. Design K3 (leakage-family attribution of the residual gap,
+candidate D) in `KDR-004` if pursued.
 
 ---
 
@@ -617,5 +671,5 @@ experiment exists to produce. Everything below is process record, not the K2 ver
 | KDR-002 | Pre-register K1: baseline reproduction from frozen production candidate | **Decided — K1 authorized (2026-06-28)** |
 | K1 | Reproduce `dataset_h` submission end-to-end; establish authoritative Track 2 baseline | **Complete** — PASS (2026-06-28); tag `K1-result`; md5 `e83b769be914976972a209c5ca278602` |
 | KDR-003 | Pre-register K2: quantify the leakage gap via record-adjacency magic features | **Decided — K2 authorized (2026-06-28)** |
-| K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Authorized, not started** — branch `kaggle/K2-magic-leakage-probe` (to cut from `kaggle-main`) |
-| K3 | (to be designed) Leakage-family attribution of any residual gap (candidate D) | Pending — pre-register in `KDR-004` after K2 |
+| K2 | How much of the leakage gap (0.144 → ~0.50) do record-adjacency magic features recover? | **Complete** — public LB 0.31699 / private LB 0.32702 (~49% of gap recovered); `H_adjacency_dominant` confirmed; tag `K2-result` (2026-07-02) |
+| K3 | (to be designed) Leakage-family attribution of any residual gap (candidate D) | Pending — pre-register in `KDR-004`; residual ~51% of the gap unexplained by adjacency alone |
