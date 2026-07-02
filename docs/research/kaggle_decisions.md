@@ -1384,10 +1384,71 @@ file touched. No `decisions.md` entry. No leaderboard number outside `kaggle_dec
   heavy-ensembling territory, which RP1 already found unproductive in the honest space and which
   the Track 2 charter deprioritizes relative to clean mechanism attribution. This is a **deliberate
   scope boundary, not a failure** — document it as such.
-- **This pre-registration does not authorize K5 implementation.** On go-ahead: cut
-  `kaggle/K5-duplicate-groups`, build duplicate-group features from the existing engineered feature
-  set (no new raw-matrix read), train both variants, validate, and (with explicit authorization)
-  measure both LB scores.
+- **v2 supersedes the v1 bullet above:** this v2 revision authorizes K5 implementation (§7 requires
+  committing v2 to `kaggle-main` before cutting `kaggle/K5-duplicate-groups`, which happened). Raw
+  `{train,test}_{date,numeric}.parquet` are read (read-only) for the key hashes, per §4. Kaggle
+  submission of the resulting files still requires separate explicit authorization.
+
+### K5 Implementation status (2026-07-02) — build/train/submission complete, LB scores NOT yet measured
+
+**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
+classification remain **pending** until both Kaggle LB scores are measured (an outward action
+requiring separate explicit user authorization, per §5 and K1–K4 precedent).
+
+- **Branch:** `kaggle/K5-duplicate-groups`, cut from `kaggle-main` @ `1cf7e83` (KDR-006 v2 ratified
+  and committed first, per §7).
+- **New quarantine module:** `src/kaggle/duplicate_features.py` — three raw-signature keys
+  (`key_date`, `key_numeric`, `key_nanpat`), streamed read-only from
+  `data/processed/{train,test}_{date,numeric}.parquet` (never written to); `DUPLICATE_FEATURE_COLS`
+  (17, label-free) and `DUPLICATE_LABEL_COLS` (8, quarantined). Hash-based grouping independently
+  verified to exactly match pandas' native `.duplicated()`/`.groupby()` detection on a 5,000-row
+  real-data slice (107 groups, 217 rows, both methods). Group/chain/label-lookup arithmetic verified
+  by hand on a synthetic 6-row train+test example (every column value hand-traced and matched).
+- **New dataset build script:** `scripts/kaggle/build_duplicate_dataset.py` additively merges the
+  25 duplicate columns onto K3-A's winning feature set → `data/features/dataset_h_dup_{train,test}.parquet`
+  (row counts asserted unchanged: train 1,183,747, test 1,183,748).
+- **New training entry point:** `scripts/kaggle/train_k5_variant.py --variant
+  {identity_free,identity_label}`, reusing `train_lightgbm_oof`/`build_model_payload` unchanged
+  (same LightGBM hyperparameters as K2/K3/K4, no change logged).
+- **Submissions generated via the existing `scripts/kaggle/generate_submission_K2.py`, unmodified**
+  — reused with zero new submission code, same as K3's/K4's variants.
+
+**Process guards (KDR-006 v2 §5), both passed on the full 2,367,495-row dataset:**
+- **Degenerate-grouping (guard 2):** largest `key_date`/`key_numeric` group is 1,165 rows (0.049% of
+  all rows, well under the 1% cap); `key_nanpat` shows 22,717 distinct groups (≥50 required).
+  102,541 distinct `key_date` groups of size ≥2 exist — a non-trivial identity-duplicate structure,
+  not the degenerate/empty case.
+- **Hash-collision sanity (guard 3):** the 5 largest groups per key (`key_date`, `key_numeric`)
+  re-verified byte-equal against the raw parquet — no false merges from a hashing bug.
+
+| Field | Variant A — identity_free | Variant B — identity_label |
+|---|---|---|
+| Feature count | 51 (16 `dataset_h` + 18 position-only magic + 17 duplicate) | 42 (16 `dataset_h` + 18 position-only magic + 8 duplicate) |
+| Model | `outputs/kaggle/models/k5_identity_free_model.pkl`, fingerprint `e9df7ffff186b6fa` | `outputs/kaggle/models/k5_identity_label_model.pkl`, fingerprint `e6faaf3d92fdaa43` |
+| OOF MCC | **HONEST** `0.32506` (label-free; delta **+0.00745** over K3-A's `0.31761` baseline — larger than K4's +0.00431) | **CONTAMINATED** `0.57828` (identity-conditioned train-neighbor `Response` leaks across folds, same mechanism as K2/K3-B; flagged, not comparable to an honest MCC) |
+| Threshold | `0.98` (honest) | `0.95` (contaminated-OOF-derived, same caveat as K2/K3-B) |
+| Feature importance | Duplicate columns confirmed non-trivial: `dup_nanpat_group_rank_frac` ranks **#7 of 51**; `dup_nanpat_group_rank` #13; `dup_nanpat_group_size` #15; `dup_numeric_group_size` #23. The **route/NaN-pattern key carries more signal than the date/numeric identity keys or the chain features** (all chain columns rank in the bottom third) | n/a (contaminated) |
+| Submission | `outputs/kaggle/submission_K5_identity_free.csv` — rows 1,183,748, positives 1,288, md5 `f854c18193675be64963b99affe85a90`, sha256 `0e9f00da0ebe05160164a0a1aacf8018ec5cb818b3cc118462027825e06da061` | `outputs/kaggle/submission_K5_identity_label.csv` — rows 1,183,748, positives 2,598, md5 `d3793a310d3e8f6ab148dee403fe6a30`, sha256 `28e72c99cce8d589a0f59a4ec87d1971884de7ced9a4fbaeb6cada0e7e5d49c8` |
+| Id-set vs `sample_submission` | exact match, 0 NaN, schema `[Id, Response]` int64/int64, `Response ∈ {0,1}` | exact match, 0 NaN, schema `[Id, Response]` int64/int64, `Response ∈ {0,1}` |
+| Determinism | 2 independent submission-generation runs against the same frozen model → byte-identical (same md5) | 2 independent submission-generation runs against the same frozen model → byte-identical (same md5) |
+
+- **Key-computation determinism independently re-verified:** `compute_duplicate_keys` called twice
+  end-to-end (full raw-parquet streaming pass, both times) → `DataFrame.equals` → `True`.
+- **Firewall verified:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both
+  `src/kaggle/` and `scripts/kaggle/` → **empty**. Diff against `kaggle-main` base `1cf7e83` adds
+  only `src/kaggle/duplicate_features.py`, `scripts/kaggle/build_duplicate_dataset.py`,
+  `scripts/kaggle/train_k5_variant.py` — no existing file modified, no Track 1/3 file touched, no
+  write to `data/processed/`.
+- **Interim observation (not the K5 verdict):** Variant A's honest OOF gain (+0.00745) is the
+  largest single-metric gain since K3-A itself among the label-free family (larger than K4's
+  +0.00431), and feature importance shows the *route* signature (`key_nanpat`) — not the exact-value
+  identity keys the winner write-ups emphasized most — carries the strongest duplicate-family
+  signal in this dataset. Chain features (the winners' marquee mechanism) rank low in importance
+  here — consistent with, but not proof of, a dataset-specific difference from the winner write-ups.
+  The real test is the LB.
+- **Not yet done:** Kaggle LB submission for either variant (requires separate explicit user
+  authorization), `K5-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision +
+  hypothesis classification + ledger update.
 
 ---
 
@@ -1405,4 +1466,4 @@ file touched. No `decisions.md` entry. No leaderboard number outside `kaggle_dec
 | KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
 | K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Complete** — OOF 0.32192 (+0.00431); public LB 0.31697 (−0.00094); private LB 0.33447 (+0.00286); `H_cohort_modest` confirmed at low end; record-order/timing family declared saturated; tag `K4-result` (2026-07-02) |
 | KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | **Decided — K5 authorized (v2 ratified 2026-07-02)**: raw-signature keys (`key_date`/`key_numeric`/`key_nanpat`), Id-chains on `key_date`, K3-style A/B attribution |
-| K5 | Does raw-signature duplicate/chain identity carry leakage distinct from record-order/timing proximity? | **Authorized, implementation starting** — branch `kaggle/K5-duplicate-groups` (to cut from `kaggle-main`) |
+| K5 | Does raw-signature duplicate/chain identity carry leakage distinct from record-order/timing proximity? | **Implementation complete, LB scores pending** — branch `kaggle/K5-duplicate-groups`; honest OOF MCC 0.32506 (delta +0.00745 over K3-A, largest label-free gain since K3-A itself) |
