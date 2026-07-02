@@ -1168,6 +1168,153 @@ K5 is not authorized.
 
 ---
 
+## KDR-006 — Pre-register K5: duplicate-group (feature-identity) leakage attribution
+
+- **Date:** 2026-07-02
+- **Decision type:** Experiment pre-registration (post-K4 governance/scientific reassessment).
+  **Authorizes pre-registration only — implementation, branch creation, training, and Kaggle
+  submission all require separate explicit go-ahead.** A design entry, no code/branch/model in
+  this commit.
+
+### §1 — Trigger
+
+K4 closed the record-order/timing leakage family: cross-experiment public LB (K2 0.31699 → K3-A
+0.31791 → K4 0.31697, spread 0.00094 across three experiments that each added materially different
+feature engineering) is the empirical signature of saturation. Continuing to refine sort orders,
+timestamp buckets, or lag depth inside that family is very unlikely to move public LB by more than
+noise. The post-K4 scientific reassessment identified exactly **one remaining, distinct, cheap,
+untested leakage mechanism**: rows that are exact or near-exact duplicates of another row in
+**feature space** (not time/Id order) may carry an identity signal — via label lookup within the
+duplicate group — that record-adjacency (K2), position (K3), and cohort geometry (K4) do not
+capture, because two duplicate parts need not be temporally adjacent at all. K5 tests whether this
+distinct mechanism carries any of the remaining ~0.183 public-LB gap (honest 0.14389 → ceiling
+~0.50), or whether it is empty and Track 2's leakage-family decomposition is complete.
+
+### §2 — Imported priors (K1–K4 — no re-derivation)
+
+- **K1:** honest baseline, public 0.14389 / private 0.16160.
+- **K2:** full magic (24 cols), public 0.31699 / private 0.32702. Record-adjacency confirmed as the
+  major driver (~49% of the documented gap).
+- **K3:** attribution — 100% of K2's gain is record-*proximity* (position-only, public 0.31791 /
+  private 0.33161); neighbor-*label* lookup contributes 0% and is actively harmful in isolation
+  (label-only, public 0.10065 / private 0.10530, below K1). Neighbor-label leakage retired.
+  Label-free record-order OOF confirmed trustworthy (OOF↔LB Δ≈0.0003 public).
+- **K4:** cohort geometry — small, real, but strategically negligible increment (OOF 0.32192,
+  public 0.31697, private 0.33447; `H_cohort_modest` confirmed at its low end). Record-order/timing
+  family declared **saturated**. OOF-vs-Private calibration reinforced (both agree on small
+  positive movement; Public alone is noisier at sub-0.005 magnitude).
+- **RP1/RP2 (DR-008):** honest representation/model space exhausted — reinforces that any K5 gain
+  must come from a genuine leakage mechanism, not new sensor features.
+- **What is structurally different about duplicates vs. everything K2–K4 tested:** K2/K3/K4 all
+  operate on **temporal/Id proximity** — nearest neighbor in some sort order. A duplicate-group
+  relationship is an **identity** relationship: two parts with (near-)identical raw feature vectors
+  can be arbitrarily far apart in `Id`/`start_time` order. If duplicate identity carries signal,
+  it is *not* redundant with anything K2–K4 already measured; if it doesn't, that is new information
+  too (closes the leakage decomposition cleanly).
+
+### §3 — Hypotheses (entering priors, fixed before results)
+
+- **H_duplicate_material (0.30):** duplicate-group features add a clear, out-of-baseline gain over
+  K3-A — OOF rises materially above 0.318 (e.g. ≥0.33) and a confirming LB submission tracks it
+  (within ±0.01, given K4's evidence that Public alone can be noisy at small magnitudes).
+- **H_duplicate_modest (0.35):** duplicate-group features add a small, real gain (OOF ~0.320–0.330,
+  comparable to or slightly larger than K4's +0.004) — a genuine but minor contribution, similar in
+  character to K4's result.
+- **H_duplicate_null (0.35):** duplicate-group features add ~nothing (OOF ≤0.319, within noise) —
+  true exact/near-exact duplicates are rare enough in this dataset that the mechanism doesn't
+  materially exist, or duplicate rows are already implicitly captured by existing features (e.g.
+  identical `feature_mean`/`chunk` statistics). This is given a higher prior than K4's null case
+  (0.15) because, unlike cohort geometry (which extended an already-productive family), duplicate
+  identity is untested territory with no positive prior evidence yet — true uncertainty, not a
+  refinement of a working mechanism.
+- **Priors are deliberately flatter than K2/K3/K4's** (30/35/35 vs. K4's 40/45/15) because this is
+  the first genuinely novel mechanism tested since K2 — there is no K3-style "real LB already hints
+  at the answer" data point to lean on.
+
+### §4 — Feature/model specification (concrete, mirrors K3's clean A/B design)
+
+**Duplicate-group identity, computed over the train+test concatenation** (same total-order/
+determinism conventions as `magic_features.py`/`cohort_features.py`): hash each row's raw numeric
+feature vector (the existing `dataset_h`/`dataset_baseline` numeric feature columns, NOT the raw
+~968-column `train_numeric.parquet` — reuse the already-engineered feature set to avoid a second
+expensive raw-matrix read) into a duplicate-group key. Two variants, exactly like K3:
+
+- **Variant A — label-free (position/identity only):** `DATASET_H_FEATURE_COLS` (16) +
+  `POSITION_ONLY_MAGIC_COLS` (18, K3-A's baseline) + new duplicate-identity columns: group size,
+  `is_duplicate` flag, position-within-group, count of train/test members in the group (**no
+  Response reference**). Label-free by construction; honest OOF.
+- **Variant B — label-touching (quarantined):** the same base + duplicate-group **label-lookup**
+  columns — count/fraction of *train* members within the row's duplicate group that failed
+  (`Response == 1`), analogous to K3-B's `train_resp_prev/next` but keyed on feature-identity
+  instead of time-order. **Contaminated OOF by construction** (same chunk-aware-CV blind spot as
+  K2/K3-B) — flag it, never use as a ranking metric; LB is the only valid measurement.
+- **Hyperparameters/threshold:** identical LightGBM config and OOF-derived threshold convention as
+  K2/K3/K4 — no change logged unless a genuine implementation reason emerges.
+
+### §5 — Success / pass / failure criteria
+
+- **Process (BINDING):** K5 fully recorded — this pre-registration, `kaggle/K5-duplicate-groups`
+  off `kaggle-main`, `K5-result` tag, results merged to `kaggle-main` **only**, both submissions
+  reproducible from committed quarantine code + documented commands. Firewall (§6) checks pass.
+- **Outcome (SOFT, non-binding):** a confident classification into exactly one of §3's hypotheses,
+  using honest OOF (Variant A, primary metric per K3/K4's calibration finding) plus two confirming
+  LB submissions (mirroring K3's A/B design, since this is again an attribution question — does the
+  gain, if any, come from identity/position or from the label lookup).
+- **Failure/warning:** if Variant B's OOF is contaminated (expected, flag per K2/K3-B precedent), or
+  duplicate-group detection produces degenerate results (e.g. >50% of rows in one group, indicating
+  a hashing bug rather than real duplication), K5 reports "unresolved — rebuild" and draws no
+  attribution.
+
+### §6 — Contamination safeguards
+
+Same quarantine as K2/K3/K4 — no new trees. New module `src/kaggle/duplicate_features.py` (Variant
+A label-free; Variant B's `Response`-lookup logic isolated and clearly flagged, mirroring
+`magic_features.py`'s `train_resp_*` block). New training entry point under `scripts/kaggle/`
+(mirrors `train_k3_variant.py`'s two-variant pattern); `scripts/kaggle/generate_submission_K2.py`
+reused **unchanged** for both variants — no new submission script required. Code valve
+(`grep -rn --include="*.py" "import.*kaggle" src/ scripts/` excluding both `src/kaggle/` and
+`scripts/kaggle/`) must remain empty before merge. No Track 1/3 file touched. No `decisions.md`
+entry. No leaderboard number outside `kaggle_decisions.md`.
+
+### §7 — Git strategy
+
+- **Branch:** `kaggle/K5-duplicate-groups`, cut from `kaggle-main` **after** this KDR-006 is
+  ratified and committed onto `kaggle-main` (K1–K4 precedent).
+- **Commits:** `K5 exp:` (duplicate-group features + variant training code), `K5 eval:`
+  (submissions + validation), `K5 docs:` (Evidence/Outcome/Decision, once LB scores are in).
+- **Merge:** `kaggle/K5-duplicate-groups` → **`kaggle-main` only**, `--no-ff`. Never `main`.
+- **Tag:** `K5-result` (annotated), placed **only after** both LB scores are recorded (K1–K4
+  precedent — no tag before outcome evidence exists).
+
+### §8 — Documentation updates required after K5 evidence lands
+
+- `docs/research/kaggle_decisions.md` — fill KDR-006 Evidence/Outcome/Decision + hypothesis
+  classification + ledger update (K5 → Complete).
+- `docs/agent_memory/claude_state.md` — Track 2 state, K5 record, closure recommendation.
+- `docs/ml_system_tracks.md` — update Track 2 progress/state line alongside the KDR-006 closure
+  commit.
+- **Not touched:** `decisions.md`, README, case study, Track 1/3 docs, `CLAUDE.md`.
+
+### §9 — Stopping conditions and Track 2 closure path
+
+- **If K5 lands in `H_duplicate_material` or `H_duplicate_modest`:** record the gain, then proceed
+  directly to K6 consolidation (best label-free leaky model + honest threshold + final leakage-gap-
+  by-family decomposition) — no K7+ is anticipated; the leakage-family space is judged exhausted
+  either way once K5 resolves.
+- **If K5 lands in `H_duplicate_null`:** Track 2's leakage-family decomposition is complete (K1
+  honest baseline; K2/K3 record-proximity dominant, neighbor-label dead; K4 cohort-geometry
+  saturated-modest; K5 duplicate-identity null). Proceed directly to K6 consolidation/closure —
+  the remaining ~0.15–0.18 public-LB gap to the ~0.50 ceiling is brute-force/full-raw-matrix/
+  heavy-ensembling territory, which RP1 already found unproductive in the honest space and which
+  the Track 2 charter deprioritizes relative to clean mechanism attribution. This is a **deliberate
+  scope boundary, not a failure** — document it as such.
+- **This pre-registration does not authorize K5 implementation.** On go-ahead: cut
+  `kaggle/K5-duplicate-groups`, build duplicate-group features from the existing engineered feature
+  set (no new raw-matrix read), train both variants, validate, and (with explicit authorization)
+  measure both LB scores.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
@@ -1181,5 +1328,5 @@ K5 is not authorized.
 | K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Complete** — position-only public 0.31791/private 0.33161 (exceeds K2); label-only public 0.10065/private 0.10530 (below K1); `H_position_dominant` confirmed, `H_label_contributes`/`H_position_optimistic` rejected; tag `K3-result` (2026-07-02) |
 | KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
 | K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Complete** — OOF 0.32192 (+0.00431); public LB 0.31697 (−0.00094); private LB 0.33447 (+0.00286); `H_cohort_modest` confirmed at low end; record-order/timing family declared saturated; tag `K4-result` (2026-07-02) |
-| KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | Pending — see KDR-006 below |
-| K5 | Does exact/near-exact duplicate-row identity carry leakage distinct from record-order/timing proximity? | Pending — pre-register in `KDR-006` before branching |
+| KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | **Pre-registered (2026-07-02) — implementation NOT yet authorized** (pre-registration only per explicit scope; branch cutting/training/submission require separate go-ahead) |
+| K5 | Does exact/near-exact duplicate-row identity carry leakage distinct from record-order/timing proximity? | Not started — pending explicit authorization to cut `kaggle/K5-duplicate-groups` |
