@@ -1389,11 +1389,10 @@ file touched. No `decisions.md` entry. No leaderboard number outside `kaggle_dec
   `{train,test}_{date,numeric}.parquet` are read (read-only) for the key hashes, per §4. Kaggle
   submission of the resulting files still requires separate explicit authorization.
 
-### K5 Implementation status (2026-07-02) — build/train/submission complete, LB scores NOT yet measured
+### K5 Implementation status (2026-07-02) — build/train/submission complete, LB scores measured
 
-**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
-classification remain **pending** until both Kaggle LB scores are measured (an outward action
-requiring separate explicit user authorization, per §5 and K1–K4 precedent).
+**Status update.** Implementation record below; the formal Evidence / Outcome / Decision block and
+hypothesis classification follow in the next section now that both Kaggle LB scores are in.
 
 - **Branch:** `kaggle/K5-duplicate-groups`, cut from `kaggle-main` @ `1cf7e83` (KDR-006 v2 ratified
   and committed first, per §7).
@@ -1446,9 +1445,51 @@ requiring separate explicit user authorization, per §5 and K1–K4 precedent).
   signal in this dataset. Chain features (the winners' marquee mechanism) rank low in importance
   here — consistent with, but not proof of, a dataset-specific difference from the winner write-ups.
   The real test is the LB.
-- **Not yet done:** Kaggle LB submission for either variant (requires separate explicit user
-  authorization), `K5-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision +
-  hypothesis classification + ledger update.
+### §Evidence — K5 Kaggle LB results (2026-07-02, manual submission, user-authorized)
+
+| Variant | Public LB | Private LB | vs K3-A public (0.31791) | vs K3-A private (0.33161) |
+|---|---|---|---|---|
+| A — identity_free (label-free) | 0.32330 | 0.33711 | +0.00539 | +0.00550 |
+| B — identity_label (contaminated OOF, LB-only) | **0.33571** | **0.33989** | +0.01780 | +0.00828 |
+
+Both submissions validated pre-submission (Id-set exact match, 0 NaN, correct schema) and confirmed
+deterministic (byte-identical across independent regeneration runs). Variant B is the best model
+produced by Track 2 to date on both boards.
+
+**Honest-OOF calibration (3rd confirmation):** Variant A OOF 0.32506 vs public 0.32330 (Δ 0.0018) —
+consistent with K3-A's Δ 0.0003 and K4's within-noise result. The label-free OOF→LB protocol is now
+trusted across K3, K4, and K5.
+
+### §Outcome — hypothesis classification
+
+**`H_duplicate_material` — CONFIRMED**, via the pre-registered Variant-B clause: *"Variant B LB
+clearly above K3-A (identity-keyed label lookup generalizes where K3's time-order lookup did not)"*
+(§3). Variant B beats K3-A by +0.01780 public / +0.00828 private — 8–19x the K2→K4 saturation
+spread (0.00094), well outside the ±0.01 noise tolerance on the private board.
+
+`H_duplicate_modest` is excluded (its "Variant B adds nothing" clause is falsified).
+`H_duplicate_null` is excluded on both clauses.
+
+**Caveat carried into the record:** Variant B's public gain (+0.01780) is materially larger than its
+private gain (+0.00828). Per the K4 public-noise lesson, the private number is the more durable
+estimate of this family's contribution — material, but not as large as the public headline suggests.
+
+**K3/K5 relationship:** not a contradiction. K3-B falsified *adjacency-conditioned* label transfer
+(`P(Response_i | Response_j, adjacent(i,j))`); K5-B confirms *identity-conditioned* label transfer
+(`P(Response_i | Response_j, identical_signature(i,j))`). K3's attribution of K2's gain to
+record-position (not adjacency-label) stands unrefuted — only the informal shorthand "neighbor-label
+features are dead" needed the identity/adjacency scope distinction, which KDR-006 §4 had already
+drawn before K5 ran.
+
+### §Decision
+
+Per §9 (v2 stopping rule, pre-registered before K5 ran): **K5 lands in `H_duplicate_material` →
+record the gain, proceed directly to K6 consolidation** (best label-free model + final
+leakage-gap-by-family decomposition + written F9 rejection decision). No K7+ leakage-family
+experiment is opened — the family space is judged exhausted per the pre-registered rule.
+
+- **Not yet done:** KDR-007 pre-registration and K6 consolidation implementation — separate,
+  not-yet-authorized task.
 
 ---
 
@@ -1466,4 +1507,4 @@ requiring separate explicit user authorization, per §5 and K1–K4 precedent).
 | KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
 | K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Complete** — OOF 0.32192 (+0.00431); public LB 0.31697 (−0.00094); private LB 0.33447 (+0.00286); `H_cohort_modest` confirmed at low end; record-order/timing family declared saturated; tag `K4-result` (2026-07-02) |
 | KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | **Decided — K5 authorized (v2 ratified 2026-07-02)**: raw-signature keys (`key_date`/`key_numeric`/`key_nanpat`), Id-chains on `key_date`, K3-style A/B attribution |
-| K5 | Does raw-signature duplicate/chain identity carry leakage distinct from record-order/timing proximity? | **Implementation complete, LB scores pending** — branch `kaggle/K5-duplicate-groups`; honest OOF MCC 0.32506 (delta +0.00745 over K3-A, largest label-free gain since K3-A itself) |
+| K5 | Does raw-signature duplicate/chain identity carry leakage distinct from record-order/timing proximity? | **Complete** — Variant A (label-free) public 0.32330/private 0.33711 (OOF 0.32506, honest calibration 3rd-confirmed); Variant B (identity-label, contaminated OOF) public 0.33571/private 0.33989 — best model to date; `H_duplicate_material` confirmed; tag `K5-result` (2026-07-02) |
