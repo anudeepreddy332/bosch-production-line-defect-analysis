@@ -1058,11 +1058,10 @@ entry. No leaderboard number outside `kaggle_decisions.md`.
   `K4-result`, merge to `kaggle-main` only. Decide on conditional K5 (per-station co-occurrence)
   based on the residual gap.
 
-### K4 Implementation status (2026-07-02) — build/train/submission complete, LB score NOT yet measured
+### K4 Implementation status (2026-07-02) — build/train/submission complete
 
-**Status update only.** The formal Evidence / Outcome / Decision block and hypothesis
-classification remain **pending** until the Kaggle LB score is measured (an outward action
-requiring separate explicit user authorization, per §5 and K1/K2/K3 precedent).
+**Status update only** (superseded by the Evidence/Outcome/Decision sections below, added
+2026-07-02 once the Kaggle LB score was measured).
 
 - **Branch:** `kaggle/K4-timing-cohort`, cut from `kaggle-main` @ `37af416` (KDR-005 ratified and
   committed first, per §7).
@@ -1097,9 +1096,75 @@ requiring separate explicit user authorization, per §5 and K1/K2/K3 precedent).
   `src/kaggle/` and `scripts/kaggle/` → **empty**. Diff against `kaggle-main` base `37af416` adds
   only `src/kaggle/cohort_features.py`, `scripts/kaggle/build_cohort_dataset.py`,
   `scripts/kaggle/train_k4_cohort.py` — no existing file modified, no Track 1/3 file touched.
-- **Not yet done:** Kaggle LB submission (requires separate explicit user authorization),
-  `K4-result` tag, merge to `kaggle-main`, formal Evidence/Outcome/Decision + hypothesis
-  classification + ledger update.
+### K4 Evidence — Kaggle LB (submitted 2026-07-02, manual submission by user)
+
+`outputs/kaggle/submission_K4_cohort.csv` (md5 `d3e64d19636a834d2d2606e4cbbbe41d`, verified
+unchanged immediately before submission) was submitted to the `bosch-production-line-performance`
+Kaggle competition via the website (same `kagglesdk` CLI packaging defect as K2/K3; user submitted
+manually and reported the score below).
+
+| Metric | K3-A (position-only baseline) | K4 (cohort) | Δ (K4 − K3-A) |
+|---|---|---|---|
+| OOF MCC | 0.31761 | **0.32192** | **+0.00431** |
+| Public LB | 0.31791 | **0.31697** | **−0.00094** |
+| Private LB | 0.33161 | **0.33447** | **+0.00286** |
+
+**Public and Private disagree on sign; OOF and Private agree.** Public LB moved down by a
+negligible amount (−0.00094) while OOF and Private both moved up by a small, consistent margin
+(+0.0043 / +0.0029). Public is the smaller, noisier split; K4's own fold-level OOF ranged
+**0.28538–0.35894** (a ±0.028 per-fold spread) — the aggregate ±0.003–0.004 movement across all
+three metrics is well within a single fold's noise band. The most defensible reading: K4 adds a
+**small, real, positive increment**, not a materially new source of signal.
+
+**OOF-vs-Private calibration observation (extends K3's finding):** K3 established that label-free
+record-order OOF tracks the real LB closely. K4 reinforces this on the **Private** split
+specifically — OOF predicted +0.00431, Private delivered +0.00286, same sign and comparable
+magnitude (both small positive). Public alone (−0.00094) would have suggested null/negative, but
+Public is the split most vulnerable to noise at this magnitude, and both of the two larger-sample
+estimates (OOF on 1.18M labeled train rows, Private on the larger test partition) agree on a small
+genuine gain. This does not overturn K3's calibration finding; it refines it — OOF should be read
+against Private preferentially over Public when the two disagree at sub-0.005 magnitude.
+
+### K4 Outcome
+
+**Measurement obtained, as a soft/non-binding buy per §5.** K4 does not reproduce K3's decisive,
+order-of-magnitude jump. It adds a small, directionally-positive increment (OOF +0.00431, Private
++0.00286) that sits at the **low end of the pre-registered `H_cohort_modest` band** (OOF
+~0.320–0.335) — barely clearing the 0.320 floor of that range, nowhere near `H_cohort_large`'s
+≥0.335 threshold.
+
+### K4 Hypothesis classification (against §3 priors)
+
+| Hypothesis | Prior | Result | Verdict |
+|---|---|---|---|
+| H_cohort_large | 0.40 | Would require OOF ≥0.335 with a confirming LB within ±0.005. Actual OOF 0.32192 falls far short of 0.335 | **REJECTED** |
+| **H_cohort_modest** | 0.45 | OOF 0.32192 falls inside the pre-registered 0.320–0.335 band (at its low end); Private LB moves in the same small-positive direction (+0.00286) | **CONFIRMED** |
+| H_cohort_null | 0.15 | Would require OOF ≤0.318 (within K3-A noise). Actual OOF (0.32192) clears this by +0.00431 — a small but real increment, not indistinguishable from zero | **REJECTED** |
+
+Exact-timestamp cohort geometry adds a **small, real, but strategically negligible** increment on
+top of K3-A's rolling-window density features. This confirms §3's revised framing: most of the
+batch-geometry signal was already captured by `dataset_h`'s coarse rolling-window density proxies
+(`records_last_1hr`/`records_last_24hr`/`density_ratio`) before K4 ever ran; exact-timestamp
+granularity had only a modest residual left to contribute, and delivered almost exactly that.
+
+**Cross-experiment public-LB comparison (the decisive signal for the family, not just this KDR):**
+K2 (0.31699) → K3-A (0.31791) → K4 (0.31697) — a spread of **0.00094 across three experiments**
+that each added meaningfully different feature engineering to the record-order/timing family. This
+is the empirical signature of a **saturated** family: further work inside it (more sort orders,
+finer timestamp buckets, more lag depth) is very unlikely to move public LB by more than noise.
+
+### K4 Decision
+
+**Complete.** `outputs/kaggle/submission_K4_cohort.csv` is the authoritative K4 artifact (gitignored,
+not committed; reproducible on demand from committed quarantine code + pre-registered commands).
+Tag `K4-result` placed at the tip of `kaggle/K4-timing-cohort`, merged to `kaggle-main` only.
+KDR-005's question is resolved: exact-timestamp cohort geometry adds a small (+0.003–0.004), real
+but strategically negligible increment — `H_cohort_modest` confirmed at its low end. **The
+label-free record-order/timing family is saturated** (K2→K3→K4 public LB spread of 0.00094 despite
+each experiment adding a materially different feature set). No further timing/flow-order variants
+are justified inside this family. Design K5 (duplicate-group leakage — the one remaining untested,
+distinct leakage mechanism) in `KDR-006`, or proceed directly to Track 2 consolidation/closure if
+K5 is not authorized.
 
 ---
 
@@ -1115,4 +1180,6 @@ requiring separate explicit user authorization, per §5 and K1/K2/K3 precedent).
 | KDR-004 | Pre-register K3: attribute K2's gain between record-proximity and neighbor-label leakage | **Decided — K3 authorized (2026-07-02)** |
 | K3 | Does K2's gain come from record proximity (Variant A) or neighbor-label lookup (Variant B), or both? | **Complete** — position-only public 0.31791/private 0.33161 (exceeds K2); label-only public 0.10065/private 0.10530 (below K1); `H_position_dominant` confirmed, `H_label_contributes`/`H_position_optimistic` rejected; tag `K3-result` (2026-07-02) |
 | KDR-005 | Pre-register K4: label-free timing-cohort features (record-proximity-adjacent, no neighbor-label) | **Decided — K4 authorized (2026-07-02)** |
-| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Implementation complete, LB score pending** — branch `kaggle/K4-timing-cohort`; honest OOF MCC 0.32192 (delta +0.00431 over K3-A) |
+| K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Complete** — OOF 0.32192 (+0.00431); public LB 0.31697 (−0.00094); private LB 0.33447 (+0.00286); `H_cohort_modest` confirmed at low end; record-order/timing family declared saturated; tag `K4-result` (2026-07-02) |
+| KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | Pending — see KDR-006 below |
+| K5 | Does exact/near-exact duplicate-row identity carry leakage distinct from record-order/timing proximity? | Pending — pre-register in `KDR-006` before branching |
