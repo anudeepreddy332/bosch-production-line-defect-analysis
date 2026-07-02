@@ -1493,6 +1493,237 @@ experiment is opened — the family space is judged exhausted per the pre-regist
 
 ---
 
+## KDR-007 — Amend Track 2 objective; pre-register P0: raw-numeric signal probe
+
+### §0 — Objective amendment (supersedes KDR-001 §objective for all work from P0 onward)
+
+**Previous objective (KDR-001, K1–K5):** explain the honest-vs-leaderboard MCC gap via controlled,
+pre-registered leakage-family attribution. That objective is **complete** — K1–K5 fully decompose
+the gap into record-order position (dominant, ~85% of the recoverable gap), timing-cohort geometry
+(modest), and duplicate/identity structure (small but real, including the identity-conditioned label
+family K5-B confirmed). No further leakage-family experiment is scientifically justified; that
+research question is closed.
+
+**New primary objective, effective P0 onward:** **maximize private-leaderboard MCC**, target
+**~0.52**, starting from the current best model (K5-B, private 0.33989). Scientific rigor,
+attribution, and documentation remain required practice — they govern *how* the work is done — but
+they are no longer the *reason* the work is done. K1–K5 are retroactively understood as
+reconnaissance: they mapped which feature families carry signal, which is exactly the input a
+score-maximization roadmap needs.
+
+**What does not change:** all governance mechanics (pre-registration before implementation,
+`kaggle-main`/`kaggle/*` branch discipline, quarantine/firewall, determinism, honest-vs-contaminated
+OOF discipline, S3/production isolation) continue unmodified — see §7.
+
+**Track 1 correction (annotation, not reopening):** Track 1's "honest ceiling ≈ 0.16" (RP1/DR-008,
+frozen) was computed against a feature set that collapses all 968 raw numeric columns into a single
+`feature_mean` scalar. That is a ceiling on *that lean summary*, not on honest signal in general —
+external winner evidence (raw-numeric base models reaching materially higher honest MCC with no
+leak features at all) contradicts reading it as a general honest-signal ceiling. **`track1-frozen`
+is not reopened or amended** — this note is recorded here, Track-2-side, as the reason P0 exists:
+the raw numeric matrix is unexplored honest signal, not a re-litigation of a settled Track 1 result.
+
+### §1 — Trigger
+
+User-directed objective change (2026-07-02, same day as K5 LB evidence): K5-B's result (best model
+to date, both boards) prompted a full K1–K5 program reassessment, which concluded the leakage-family
+space is exhausted under the *original* objective. The user then explicitly redefined the primary
+objective to leaderboard-MCC maximization and requested a from-first-principles roadmap redesign,
+followed by a detailed P0 architecture review (three rounds: initial spec, three review questions,
+approval). This KDR formally pre-registers the approved P0 design plus the objective amendment that
+authorizes it.
+
+### §2 — Imported priors (K1–K5, no re-derivation)
+
+- Record-order/start-time position is the dominant honest-recoverable family (K2/K3-A).
+- Adjacency-conditioned label lookup is dead (K3-B); identity-conditioned label lookup is alive
+  (K5-B) — different conditioning predicates, not a contradiction.
+- Timing-cohort geometry is modest/noise-adjacent (K4: public LB regression despite positive
+  private and OOF).
+- Duplicate/identity structure is small but real and label-free-honest (K5-A: OOF 0.32506, +0.00745
+  over K3-A).
+- Label-free honest-OOF-to-LB calibration has held 3× (K3-A Δ0.0003, K4 within noise, K5-A Δ0.0018)
+  — trusted as a submission-free evidence channel.
+- The raw 968-column numeric matrix and the 1156-column date matrix have **never** been modeled at
+  width in Track 2; the honest baseline (`dataset_baseline`/`dataset_h`) reduces the numeric matrix
+  to one scalar (`feature_mean`).
+
+### §3 — P0 objective and hypotheses (fixed before results)
+
+**Exact question P0 answers:** under our own CV/recipe/feature stack, how much private-MCC signal
+do the raw 968 numeric columns carry — standalone, and **marginally on top of the existing
+magic/duplicate-structural stack** — and is that marginal gain large enough to justify the
+high-effort P1 raw-feature-engineering phase?
+
+**Decision variable:** Δ = Cell C honest OOF MCC − K5-A honest OOF MCC (0.32506), *not* the absolute
+Cell C level. Rationale (finalized after review): grading an un-engineered raw dump against an
+absolute bar calibrated to the *winners' engineered* raw+magic figure (~0.47–0.49) is miscalibrated
+for a probe with no station/date feature engineering, no selection, and possibly capacity-bound
+default hyperparameters. The marginal Δ, benchmarked against our own recent label-free levers (K4
++0.0043, K5-A +0.0075), is the correct probe-scale decision variable.
+
+| Hypothesis | Δ (Cell C OOF − 0.32506) | Interpretation |
+|---|---|---|
+| **H_raw_dominant** | **Δ ≥ +0.030** | Un-engineered dump already adds ~4–7× our best recent single-family lever ⇒ raw is large and largely independent of magic; P1 (deep engineering) is justified at full scope. |
+| **H_raw_modest** | **+0.010 ≤ Δ < +0.030** | Real marginal signal, comparable in size to K4/K5-A; P1 justified but re-scoped — temper the 0.52 target, lean harder on P2–P4. |
+| **H_raw_not_dominant** | **Δ < +0.010**, and capacity-unbound (see §5 guard) | Raw dump adds no more than our smallest recent levers ⇒ raw is *not* the dominant remaining lever under our recipe (does not mean raw carries zero signal — see standalone read below). |
+
+**Standalone read (Cell B, informational, not decision-gating):** evidence/prior/expectation,
+separated per user review:
+- *Evidence (measured):* external winner write-ups report raw-numeric-only GBM bases around
+  0.38–0.43 private MCC, but with feature engineering, selection, and tuning — a different pipeline
+  than P0's. No internal evidence exists (raw has never been modeled at width here).
+  Internal measured facts: K1 lean baseline 0.162 (one `feature_mean`, not raw-at-width); K5-A magic
+  0.325; recent label-free marginal gains +0.004–0.007.
+- *Prior belief:* raw sensor columns must carry substantial physical failure signal, but P0's
+  un-engineered dump (no station/date FE, no selection, default/possibly-capacity-bound config, 968
+  mostly-sparse columns diluting splits) should underperform the winners' engineered figure.
+- *Expectation (synthesized, revised down from an earlier 0.36–0.42 draft):* **~0.30–0.38, point
+  estimate ~0.34.** Confidence is low-to-moderate on the specific range (never measured in this
+  pipeline) but high on direction (Cell B will land far above Track 1's 0.16, refuting it as a
+  feature-starvation artifact rather than a true ceiling).
+- **A low Cell B does not by itself justify skipping P1** if Cell C's Δ still clears
+  `H_raw_modest`/`H_raw_dominant` — a low standalone value with a healthy marginal Δ is the
+  strongest possible signature for P1 (raw carries independent signal our crude dump barely
+  accesses; engineering unlocks it). Only a low Cell B **and** a sub-`H_raw_modest` Cell C Δ
+  genuinely undercuts P1.
+
+### §4 — Feature specification (exhaustive for P0 — no station/date engineering, no selection)
+
+All computed once over train+test (transductive, matching K2–K5), reading **read-only** from
+Production's raw `data/processed/{train,test}_numeric.parquet` (968 float feature columns, `Id`,
+`Response` train-only) plus the existing `dataset_h_dup_{train,test}.parquet` (honest + magic +
+duplicate-structural + duplicate-label columns, already built and gitignored).
+
+**6 global row-level aggregates** (`p0_nnz`, `p0_row_min`, `p0_row_max`, `p0_row_mean`,
+`p0_row_std`, `p0_row_sum`), NaN-aware, computed once over the 968 raw numeric columns. Sensitivity
+insurance only (route/scale proxy) — **not** station-wise engineering, which is explicitly deferred
+to P1.
+
+| Cell | Feature set | Feature count | Purpose |
+|---|---|---|---|
+| **A** | K5-A's existing OOF (`DATASET_H_FEATURE_COLS` + `POSITION_ONLY_MAGIC_COLS` + `DUPLICATE_FEATURE_COLS`) | 51 | Free reference — no retrain. |
+| **B** | 968 raw numeric + 6 aggregates | 974 | Standalone raw ceiling (informational). |
+| **C** | Cell B ∪ Cell A's 51 | 1025 | **Decision cell** — marginal Δ over K5-A. |
+
+**Hard exclusions (frozen, do not add):** `DUPLICATE_LABEL_COLS` (8, label-touching — would
+contaminate OOF, excluded from all decision cells); `train/test_date.parquet` (1156 cols — P1/P2);
+`train/test_categorical.parquet` (2140 cols — P2 tail); any feature selection, station/line
+aggregation, or per-station modeling (P1). No raw *value* leaves the aggregate/model-input path
+uninspected — this is not a hashing-only rule like K5's (raw numeric values are the intended honest
+signal here, not an identity key), but station/date engineering is out of scope for P0 specifically
+to keep the probe measurement clean.
+
+### §5 — Memory, model, and validation design
+
+- **Memory:** ~4.6 GB/side for the raw matrix (float32 enforced end-to-end, asserted, never silently
+  upcast to float64); read train and test **sequentially**, not concurrently; intermediate output
+  `data/features/dataset_p0_raw_{train,test}.parquet` materialized once (~5 GB/side) so the
+  expensive raw read happens a single time for both the regression check, Cell B, and Cell C.
+- **CV reuse:** `chunk_id` merged from the existing dataset (never recomputed); `cv_fold` (train-only,
+  sourced from `dataset_h.parquet`) merged in to enable `verify_persisted_fold_assignment` as a
+  guard, in addition to `make_chunk_aware_splits`'s own recomputation — both paths must agree.
+- **Model:** LightGBM only, via a new quarantined trainer `src/kaggle/wide_modeling.py` (see §5a for
+  its permanent scope). Two configs for Cell C: `LEGACY_LGB_PARAMS` (identical hyperparameters to
+  `src.training.modeling.train_lightgbm_oof` — n_estimators=700, lr=0.03, num_leaves=63,
+  subsample/colsample=0.8, reg_alpha/lambda=0.1, min_child_samples=50, class_weight="balanced") and
+  `HIGH_CAPACITY_LGB_PARAMS` (n_estimators=2500, lr=0.02) to guard against a false-negative from
+  under-capacity on 968+ columns. Cell B uses `LEGACY_LGB_PARAMS` only (standalone read is
+  informational, not decision-gating).
+- **Capacity guard:** each fold's `best_iteration_` is inspected; a cell is flagged `capacity_bound`
+  if any fold trains through its full `n_estimators` budget without early stopping triggering. Only
+  a *capacity-unbound* result may be read as falsifying `H_raw_dominant`/`H_raw_modest`.
+- **Regression anchor (mandatory, must pass before any Cell B/C result is trusted):**
+  `LEGACY_LGB_PARAMS` on Cell A's exact 51-column feature stack, run through
+  `wide_modeling.train_wide_lgbm_oof` against `dataset_h_dup_train.parquet`, must reproduce K5-A's
+  honest OOF MCC (0.32506) — proof the new trainer is a faithful superset of
+  `train_lightgbm_oof`, not a new recipe.
+- **Determinism:** 2 independent runs of the same config must produce byte-identical OOF parquet
+  output (K5 protocol); `data_fingerprint` recorded per run.
+- **Validation guards:** float32 dtype assertions on all raw/aggregate columns; row-count asserts
+  around every merge; `validate="one_to_one"` on all `merge(on="Id")` calls; schema/column-order
+  equality assert between train and test raw numeric column lists before any read.
+
+### §5a — Permanent scope of `src/kaggle/wide_modeling.py` (fixed now for P0–P4)
+
+`wide_modeling.py` is a **quarantined, LightGBM-only, single-model, feature-agnostic, chunk-aware-CV
+trainer**. Its only evolvable surface, for the life of P0 through P4, is the LightGBM hyperparameter
+dict (plus per-run seed and native-categorical declaration). This boundary is fixed to prevent the
+trainer from expanding into a mega-module across later phases.
+
+**Frozen for all of P0–P4 (never changes):** CV scheme (`make_chunk_aware_splits` on `chunk_id`,
+5-fold `StratifiedGroupKFold`, seed 42, `validate_chunk_aware_splits` +
+`verify_persisted_fold_assignment`); OOF semantics (validation-fold-only, every row scored once);
+threshold convention (`search_best_mcc_threshold` on the full OOF vector, no per-fold threshold);
+determinism/provenance contract (seeds, `data_fingerprint`, byte-identical-across-runs, stable
+result-dict/payload shape); honest-vs-contaminated discipline (the trainer never "corrects" for
+label-touching features — that is a property of the caller's feature list); quarantine (lives in
+`src/kaggle/`, imports production `src/training/` utilities in the allowed direction only, never
+imported by production); single-model scope (one model's 5-fold CV ensemble per call — no stacking,
+no meta-model).
+
+**Evolvable within the frozen contract:** LightGBM hyperparameter dict (tree count, learning rate,
+leaves, regularization, `class_weight`/`scale_pos_weight`, etc.); LightGBM determinism flags
+(`deterministic`, `force_row_wise`) when needed; native `categorical_feature` declaration (for P2);
+per-variant seeds (for P3 diversity runs); LightGBM booster type within LightGBM (gbdt/dart).
+
+**Explicitly and permanently out of scope (ruled now, not deferred):** alternative learners
+(XGBoost/CatBoost — P3 gets sibling modules reusing this contract, never added here); feature
+selection (a separate fold-safe step producing a list — never inside the trainer, to avoid the
+classic selection-leakage vector); feature engineering (features arrive pre-built via
+`scripts/kaggle/build_*.py`); stacking/meta-modeling (P3–P4 reuse the existing `train_meta_model.py`
+pattern or a dedicated stacker — the trainer only ever emits base OOF, never consumes other models'
+OOF); threshold-strategy exploration (analysis on the emitted OOF vector, outside the trainer).
+
+**Standing regression test:** `LEGACY_LGB_PARAMS` on the K5-A 51-column feature stack must always
+reproduce OOF 0.32506 — any future hyperparameter-dict evolution must keep this anchor green.
+
+### §6 — Contamination safeguards
+
+Cell B and Cell C are strictly label-free (no `DUPLICATE_LABEL_COLS`, no train-`Response` lookups of
+any kind) — both OOF numbers are honest by construction, consistent with the 3×-confirmed
+label-free OOF→LB calibration. No new contamination surface is introduced in P0.
+
+### §7 — Git strategy
+
+- **KDR-007 (this document, objective amendment + P0 spec) is committed and pushed to `kaggle-main`
+  first** — same v2-commit-first precedent as KDR-006 — before `kaggle/P0-raw-numeric-probe` is cut,
+  so the branch forks from a `kaggle-main` tip that already contains the frozen spec.
+- **Branch:** `kaggle/P0-raw-numeric-probe`, cut from that `kaggle-main` tip. Naming continues the
+  K-series numbering convention in spirit (P0 is K5's direct successor under the amended objective);
+  the `P`-prefix marks the leaderboard-optimization line as distinct from the closed K-series
+  recon line, mechanics identical.
+- **Commits:** `P0 exp:` (`wide_modeling.py`, build script, training/probe script), `P0 eval:`
+  (OOF results, submission if separately authorized), `P0 docs:` (KDR-007 Evidence/Outcome/Decision,
+  once results land).
+- **Firewall before every commit:** `grep -rn --include="*.py" "import.*kaggle" src/ scripts/`
+  excluding `src/kaggle/`/`scripts/kaggle/` → must stay empty.
+- **Merge:** `kaggle/P0-raw-numeric-probe` → **`kaggle-main` only**, `--no-ff`. Never `main`.
+- **Tag:** `P0-result` (annotated), placed **only after** OOF/LB evidence is recorded — no tag
+  before outcome evidence, per K1–K5 precedent.
+- **Kaggle submission of any P0 result requires separate explicit user authorization**, same as
+  every prior K-experiment.
+
+### §8 — Documentation updates required after P0 evidence lands
+
+- `docs/research/kaggle_decisions.md` — fill KDR-007 Evidence/Outcome/Decision + hypothesis
+  classification (`H_raw_dominant`/`H_raw_modest`/`H_raw_not_dominant`) + ledger update.
+- `docs/agent_memory/claude_state.md` — P0 record, capacity-guard result, P1 go/no-go recommendation.
+- `docs/ml_system_tracks.md` — Track 2 progress/state line, objective-amendment note.
+- **Not touched:** `decisions.md`, README, case study, Track 1/3 docs (including `track1-frozen`
+  itself — see §0), `CLAUDE.md`.
+
+### §9 — Decision, confidence, next action
+
+**Decided — P0 authorized** (architecture approved across three review rounds: initial spec, three
+targeted review questions on thresholds/evidence-basis/trainer-scope, final approval). Confidence in
+the *design* is high; confidence in the *outcome* is deliberately left open — that is what P0 exists
+to measure. Next action: implement per §4/§5 on `kaggle/P0-raw-numeric-probe`, run the regression
+anchor and (once authorized) the Cell B/C training runs, then return here to fill Evidence/Outcome/
+Decision.
+
+---
+
 ## Pending Kaggle experiment ledger
 
 | ID | Pre-registered question | Status |
@@ -1508,3 +1739,5 @@ experiment is opened — the family space is judged exhausted per the pre-regist
 | K4 | Do label-free timing-cohort features (min/max-date group geometry) add over K3-A's 34-feature baseline? | **Complete** — OOF 0.32192 (+0.00431); public LB 0.31697 (−0.00094); private LB 0.33447 (+0.00286); `H_cohort_modest` confirmed at low end; record-order/timing family declared saturated; tag `K4-result` (2026-07-02) |
 | KDR-006 | Pre-register K5: duplicate-group (feature-identity) leakage attribution | **Decided — K5 authorized (v2 ratified 2026-07-02)**: raw-signature keys (`key_date`/`key_numeric`/`key_nanpat`), Id-chains on `key_date`, K3-style A/B attribution |
 | K5 | Does raw-signature duplicate/chain identity carry leakage distinct from record-order/timing proximity? | **Complete** — Variant A (label-free) public 0.32330/private 0.33711 (OOF 0.32506, honest calibration 3rd-confirmed); Variant B (identity-label, contaminated OOF) public 0.33571/private 0.33989 — best model to date; `H_duplicate_material` confirmed; tag `K5-result` (2026-07-02) |
+| KDR-007 | Amend Track 2 objective (explain-the-gap → maximize private MCC, target ~0.52); pre-register P0: raw-numeric signal probe | **Decided — objective amended and P0 authorized (2026-07-02)**: `wide_modeling.py` (LightGBM-only, feature-agnostic trainer), Cell A/B/C factorial, Δ-over-K5-A decision variable |
+| P0 | Does the raw 968-column numeric matrix carry MCC signal, standalone and marginally over K5-A's magic/duplicate stack, large enough to justify P1 deep raw-feature engineering? | **Implementation in progress** |
